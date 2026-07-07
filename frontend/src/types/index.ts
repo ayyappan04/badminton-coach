@@ -121,6 +121,7 @@ export interface ConsentSettings {
   default_clip_share_scope: string;
   default_profile_share_scope: string;
   retention_policy: string;
+  share_progress_with_club: boolean;
 }
 
 // ---- V2 types ----
@@ -208,4 +209,66 @@ export interface Club {
   description: string | null;
   member_count: number;
   my_role: string | null;
+}
+
+// ---- Phase 3 types ----
+
+export interface OverlayLandmark {
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  visibility: number;
+}
+
+export interface OverlayManifest {
+  court: { corners_px: number[][]; method: string; confidence: number };
+  boxes_by_frame: Record<string, { track_id: number; role: string; x: number; y: number; w: number; h: number; confidence: number }[]>;
+  poses_by_frame: Record<string, { track_id: number; landmarks: OverlayLandmark[]; confidence: number }[]>;
+  shuttle_by_frame: Record<string, { x: number; y: number; confidence: number }>;
+  shuttle_trail: { frame_index: number; x: number; y: number }[];
+}
+
+export interface DoublesRotationBlock extends AnalyticsBlock {
+  formation_split?: { front_back_pct: number; side_by_side_pct: number };
+  rotation?: {
+    transitions_tracked: number;
+    avg_rotation_delay_s: number | null;
+    attacks_started_side_by_side: number;
+    missed_rotations: number;
+  };
+  spacing?: { overlap_pct: number; wide_gap_pct: number; open_middle_in_defense_pct: number | null };
+  findings?: { finding: string; suggestion: string }[];
+}
+
+export interface ClubMember {
+  user_id: string;
+  display_name: string;
+  role: string;
+  shares_progress: boolean;
+  development_score?: number | null;
+  matches_analyzed?: number;
+  top_style?: string | null;
+}
+
+export interface ClubDetail {
+  club_id: string;
+  name: string;
+  description: string | null;
+  members: ClubMember[];
+  team_dashboard: {
+    sharing_members: number;
+    avg_development_score: number | null;
+    note: string;
+  };
+}
+
+export interface SharedClipItem {
+  clip_id: string;
+  video_id: string;
+  created_by_user_id: string;
+  clip_start_s: number;
+  clip_end_s: number;
+  visibility: string;
+  caption: string | null;
 }

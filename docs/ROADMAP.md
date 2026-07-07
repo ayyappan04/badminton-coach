@@ -31,12 +31,31 @@ Explicitly deferred out of Phase 0: racket tracking, precise shuttle physics, co
 - Trained shot-type classifier (temporal model over pose + shuttle trajectory windows) to replace today's rule-based shot recognition.
 - Begin building the licensed/consented training-data pipeline described in PRIVACY_AND_CONSENT.md to support the above training work.
 
-## Phase 3 — Advanced biomechanics & simulation
+## Phase 3 — Community depth & advanced visuals (shipped in this repo)
 
-- Multi-camera or monocular-depth-assisted 3D pose lifting for more reliable joint-angle and center-of-mass estimates.
-- Contact-angle and shuttle-spin estimation where video quality allows.
-- 3D skeletal animation for the Correct-Form simulator (replacing static phase-breakdown content with an actual animated reference model), including singles/doubles technique variants.
-- Adaptive recommendation engine: training plans that adjust based on measured progress between sessions, not just static rule-based drill matching.
+Delivered:
+- Advanced doubles rotation analysis: formation timeline, rotation timing
+  after attack transitions, missed-rotation detection, partner spacing /
+  overlap / open-middle-channel findings — surfaced as an analytics block
+  with per-finding suggestions.
+- Comparison Studio v3: smoothly interpolated reference animation with a
+  racket-path arc, contact-point marker, footwork-path inset, and the user's
+  own racket-hand (wrist-estimate) path drawn over their clip from stored
+  pose data.
+- Team/coach tools: club detail pages with a team dashboard that shows only
+  members who opted in via the new per-metric consent flag
+  (share_progress_with_club, off by default).
+- Shared clips: one-click clip sharing from any coaching insight (uses the
+  account's default sharing scope), playable clip list in Community.
+- Shuttle trajectory refinement: per-segment velocity-outlier rejection and
+  median smoothing (still experimental; confidence capped at 0.5).
+- Reliability: overlay manifests and heatmaps rebuild from persisted rows,
+  so replay visuals survive server restarts.
+
+Still model/asset-gated (unchanged honesty boundary):
+- True racket detection (position/angle/head speed) — needs a fine-tuned detector.
+- Multi-camera or monocular-depth 3D pose lifting; contact-angle / shuttle-spin estimation.
+- Full 3D skeletal animation for the simulator (current reference is a 2D animated figure).
 
 ## Phase 4 — Scale & ecosystem
 

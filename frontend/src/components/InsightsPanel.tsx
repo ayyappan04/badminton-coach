@@ -31,10 +31,29 @@ export function InsightsPanel({
   onOpenTechnique: (name: string, timestamp: number) => void;
 }) {
   const [insights, setInsights] = useState<CoachingInsight[]>([]);
+  const [sharedIndex, setSharedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     api.get<CoachingInsight[]>(`/videos/${video.id}/insights`).then(setInsights).catch(() => {});
   }, [video.id]);
+
+  async function shareClip(insight: CoachingInsight, index: number) {
+    // Uses the account's default clip-sharing scope (set in Community → Privacy).
+    let scope = "private";
+    try {
+      const consent = await api.get<{ default_clip_share_scope: string }>("/consent-settings");
+      scope = consent.default_clip_share_scope;
+    } catch { /* keep private on failure */ }
+    await api.post(`/videos/${video.id}/clips`, {
+      video_id: video.id,
+      clip_start_s: Math.max(0, insight.timestamp_s - 4),
+      clip_end_s: insight.timestamp_s + 4,
+      visibility: scope,
+      caption: `${insight.category}: ${insight.correction.slice(0, 80)}`,
+    });
+    setSharedIndex(index);
+    setTimeout(() => setSharedIndex(null), 2500);
+  }
 
   if (insights.length === 0) {
     return (
@@ -70,14 +89,22 @@ export function InsightsPanel({
                 Limitations: {insight.limitations.join(", ").replace(/_/g, " ")}
               </p>
             )}
-            {techRef && (
+            <div className="flex gap-2 items-center flex-wrap">
+              {techRef && (
+                <button
+                  onClick={() => onOpenTechnique(techRef, insight.timestamp_s)}
+                  className="text-xs border border-[var(--color-accent)] text-[var(--color-accent)] rounded-md px-3 py-1.5 font-medium hover:bg-[var(--color-accent-soft)]"
+                >
+                  Open Comparison Studio
+                </button>
+              )}
               <button
-                onClick={() => onOpenTechnique(techRef, insight.timestamp_s)}
-                className="text-xs border border-[var(--color-accent)] text-[var(--color-accent)] rounded-md px-3 py-1.5 font-medium hover:bg-[var(--color-accent-soft)]"
+                onClick={() => shareClip(insight, i)}
+                className="text-xs border border-[var(--color-border-strong)] text-[var(--color-ink-soft)] rounded-md px-3 py-1.5 hover:bg-white/5"
               >
-                Open Comparison Studio
+                {sharedIndex === i ? "Clip saved ✓" : "Share clip"}
               </button>
-            )}
+            </div>
           </div>
         );
       })}

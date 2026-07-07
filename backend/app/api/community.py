@@ -192,6 +192,56 @@ def join_club(club_id: str, current_user: User = Depends(get_current_user), db: 
     return {"joined": True, "role": "member"}
 
 
+@router.get("/community/clubs/{club_id}")
+def club_detail(club_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Club members plus a team dashboard. Metrics appear ONLY for members who
+    opted in via consent-settings (share_progress_with_club) — everyone else
+    is listed by name and role with no performance data (Phase 3 per-metric
+    sharing, docs/V2_DESIGN.md §9)."""
+    from app.models.user import ConsentSettings
+    from app.models.profile import PlayerProfile
+
+    club = db.get(Club, club_id)
+    if not club:
+        raise HTTPException(status_code=404, detail="Club not found")
+    memberships = db.query(ClubMembership).filter_by(club_id=club_id).all()
+    if current_user.id not in {m.user_id for m in memberships}:
+        raise HTTPException(status_code=403, detail="Club details are visible to members only")
+
+    members = []
+    shared_scores = []
+    for m in memberships:
+        member_user = db.get(User, m.user_id)
+        if not member_user:
+            continue
+        entry = {"user_id": m.user_id, "display_name": member_user.display_name, "role": m.role, "shares_progress": False}
+        consent = db.query(ConsentSettings).filter_by(user_id=m.user_id).first()
+        if consent and consent.share_progress_with_club:
+            profile = db.query(PlayerProfile).filter_by(user_id=m.user_id).first()
+            if profile and profile.radar_scores:
+                scores = [v["score"] for v in profile.radar_scores.values() if isinstance(v, dict) and v.get("score") is not None]
+                dev_score = round(sum(scores) / len(scores), 1) if scores else None
+                entry.update({
+                    "shares_progress": True,
+                    "development_score": dev_score,
+                    "matches_analyzed": profile.matches_analyzed_count,
+                    "top_style": (profile.play_style_labels or [{}])[0].get("label"),
+                })
+                if dev_score is not None:
+                    shared_scores.append(dev_score)
+        members.append(entry)
+
+    return {
+        "club_id": club.id, "name": club.name, "description": club.description,
+        "members": members,
+        "team_dashboard": {
+            "sharing_members": len(shared_scores),
+            "avg_development_score": round(sum(shared_scores) / len(shared_scores), 1) if shared_scores else None,
+            "note": "Shows only members who opted in to share progress with this club.",
+        },
+    }
+
+
 # ---- Training streak (V2) ----
 
 @router.get("/community/streak")

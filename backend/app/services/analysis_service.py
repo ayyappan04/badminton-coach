@@ -27,6 +27,7 @@ from app.services.cv_pipeline.court_detection import pixel_to_court
 from app.services.cv_pipeline.types import PipelineResult
 from app.services.coaching import insight_generator
 from app.services.tactics import match_analytics as analytics_engine
+from app.services.tactics import doubles_rotation
 from app.services.profiling import player_profile_builder as profiler
 
 _pipeline_cache: Dict[str, PipelineResult] = {}
@@ -280,7 +281,7 @@ def finalize_after_identity(video_id: str) -> None:
                 row.ending_track_role = ending["ending_track_role"]
             db.commit()
 
-            _compute_and_store_match_analytics(db, video, result, self_track_id, opponent_track_ids)
+            _compute_and_store_match_analytics(db, video, result, self_track_id, opponent_track_ids, partner_track_id)
 
         video.status = "analyzed"
         video.match_format = "doubles" if len(tracked_persons) > 2 else ("singles" if len(tracked_persons) == 2 else video.match_format)
@@ -312,6 +313,7 @@ def _court_positions_for_track(result: PipelineResult, track_id: int) -> List[Di
 def _compute_and_store_match_analytics(
     db: Session, video: Video, result: PipelineResult,
     self_track_id: int, opponent_track_ids: List[int],
+    partner_track_id: Optional[int] = None,
 ) -> None:
     rallies_payload = [
         {"rally_index": r.rally_index, "start_s": r.start_timestamp_s, "end_s": r.end_timestamp_s}
@@ -335,6 +337,22 @@ def _compute_and_store_match_analytics(
         opponent_heatmap=opponent_heatmap, net_y=court_geometry.NET_Y,
         calibration_confidence=result.calibration.confidence,
     )
+
+    if partner_track_id is not None:
+        team_track_ids = {self_track_id, partner_track_id}
+        team_shots = [
+            {"timestamp_s": s.timestamp_s, "intent": s.intent, "is_self_team": s.track_id in team_track_ids}
+            for s in result.shots
+        ]
+        self_track = next((t for t in result.tracks if t.track_id == self_track_id), None)
+        track_conf = self_track.mean_confidence if self_track else 0.4
+        analytics["blocks"]["doubles_rotation"] = doubles_rotation.analyze_doubles_rotation(
+            self_positions=self_positions,
+            partner_positions=_court_positions_for_track(result, partner_track_id),
+            shots=team_shots,
+            calibration_confidence=result.calibration.confidence,
+            track_confidence=track_conf,
+        )
 
     existing = db.query(MatchAnalytics).filter_by(video_id=video.id).first()
     if existing:

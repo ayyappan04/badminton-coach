@@ -22,3 +22,6 @@ class ConsentSettings(TimestampedBase):
     default_clip_share_scope: Mapped[str] = mapped_column(String, default="private")
     default_profile_share_scope: Mapped[str] = mapped_column(String, default="friends")
     retention_policy: Mapped[str] = mapped_column(String, default="keep_indefinitely")
+    # Phase 3: per-metric team sharing — clubs never see member metrics unless
+    # the member opts in here (docs/V2_DESIGN.md §9).
+    share_progress_with_club: Mapped[bool] = mapped_column(Boolean, default=False)

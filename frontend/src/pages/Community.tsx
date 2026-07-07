@@ -4,8 +4,11 @@ import { FriendsPanel } from "../components/FriendsPanel";
 import { PracticePlanner } from "../components/PracticePlanner";
 import { PrivacyControls } from "../components/PrivacyControls";
 import { ClubsPanel } from "../components/ClubsPanel";
+import { SharedClipsPanel } from "../components/SharedClipsPanel";
+import { useAuth } from "../context/AuthContext";
 
 export function Community() {
+  const { user } = useAuth();
   const [streak, setStreak] = useState<number | null>(null);
 
   useEffect(() => {
@@ -40,10 +43,16 @@ export function Community() {
         </section>
       </div>
 
-      <section>
-        <h2 className="font-semibold mb-3">Clubs</h2>
-        <ClubsPanel />
-      </section>
+      <div className="grid md:grid-cols-2 gap-8">
+        <section>
+          <h2 className="font-semibold mb-3">Clubs</h2>
+          <ClubsPanel />
+        </section>
+        <section>
+          <h2 className="font-semibold mb-3">Shared clips</h2>
+          <SharedClipsPanel currentUserId={user?.id ?? ""} />
+        </section>
+      </div>
 
       <section>
         <h2 className="font-semibold mb-3">Privacy controls</h2>

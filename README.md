@@ -54,6 +54,23 @@ See [docs/](docs/) for the full system design:
   server restarts), `pipeline_version` recorded per video, user corrections
   (court corners) stored as an auditable feedback loop.
 
+## What's new in Phase 3
+
+- **Advanced doubles rotation analysis**: formation split (front-back vs
+  side-by-side), rotation timing after attack transitions, missed rotations,
+  partner overlap and open-middle-channel detection — each finding paired
+  with a concrete suggestion and an occlusion-honest confidence.
+- **Comparison Studio v3**: smoothly animated reference with racket-path arc,
+  contact-point marker, and footwork-path inset — plus your own racket-hand
+  (wrist-estimate) path drawn over your clip from stored pose data.
+- **Team & coach tools**: club pages with a team dashboard governed by a new
+  per-metric consent flag (`share_progress_with_club`, off by default) —
+  clubs never see member metrics without explicit opt-in.
+- **Shared clips**: one-click sharing from any coaching insight using your
+  default sharing scope; playable clip list in Community.
+- **Shuttle trajectory refinement**: segment-wise outlier rejection and
+  median smoothing — still labeled experimental, confidence capped.
+
 ## What's implemented (Phase 0 / MVP)
 
 - Real (not mocked) CV pipeline: OpenCV court-line detection, HOG-based player

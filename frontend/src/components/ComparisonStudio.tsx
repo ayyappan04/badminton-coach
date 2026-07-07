@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getToken } from "../api/client";
-import type { TechniqueReferenceV2, Video } from "../types";
+import type { OverlayManifest, TechniqueReferenceV2, Video } from "../types";
 
-/** V2 Comparison Studio: the user's own clip side-by-side with an animated
- * correct-form reference, with slow motion, frame stepping, a phase scrubber,
- * per-phase checkpoints, and level/handedness/context configuration.
- * The reference is a lightweight animated figure — full 3D skeletal animation
- * is a Phase-3 item (docs/V2_DESIGN.md §18). */
+/** Comparison Studio (Phase 3): the user's own clip side-by-side with a
+ * smoothly animated correct-form reference — racket-path arc, contact-point
+ * marker, and a footwork-path inset — plus slow motion, frame stepping, a
+ * phase scrubber, per-phase checkpoints, and level/handedness/context
+ * configuration. The user's clip gets a racket-hand (wrist-estimate) path
+ * overlay drawn from their own pose data; true racket tracking remains a
+ * needs-model-training item (docs/V2_DESIGN.md §18). */
 export function ComparisonStudio({
   name,
   video,
@@ -22,7 +24,7 @@ export function ComparisonStudio({
   const [level, setLevel] = useState("intermediate");
   const [handedness, setHandedness] = useState("right");
   const [context, setContext] = useState("");
-  const [phaseIndex, setPhaseIndex] = useState(0);
+  const [progress, setProgress] = useState(0); // continuous 0..1 across all phases
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(0.5);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -37,10 +39,11 @@ export function ComparisonStudio({
       .catch(() => setRef(null));
   }, [name, level, handedness, context]);
 
-  // Reference animation loop: advance one phase per second while playing.
+  // Smoothly tween through the movement (~4s per full cycle) instead of
+  // stepping one static pose per phase.
   useEffect(() => {
     if (!playing || !ref || ref.phases.length < 2) return;
-    const t = setInterval(() => setPhaseIndex((i) => (i + 1) % ref.phases.length), 1000);
+    const t = setInterval(() => setProgress((p) => (p + 0.01) % 1), 40);
     return () => clearInterval(t);
   }, [playing, ref]);
 
@@ -69,8 +72,11 @@ export function ComparisonStudio({
   }, []);
 
   const src = video ? `/api/v1/videos/${video.id}/stream?token=${encodeURIComponent(getToken() || "")}` : null;
+  const totalPhases = ref?.phases.length ?? 0;
+  const phaseIndex = totalPhases > 1 ? Math.min(totalPhases - 1, Math.floor(progress * totalPhases)) : 0;
   const phase = ref?.phases[phaseIndex];
   const checkpoint = ref?.checkpoints?.[phaseIndex] ?? null;
+  const contactIndex = ref ? ref.phases.findIndex((p) => /contact/i.test(p.phase)) : -1;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -114,9 +120,12 @@ export function ComparisonStudio({
             <div className="grid md:grid-cols-2 gap-4 mb-4">
               <div className="border border-[var(--color-border)] rounded-lg overflow-hidden bg-black/40">
                 <p className="text-[10px] uppercase tracking-wide text-[var(--color-ink-soft)] px-3 pt-2">Your clip</p>
-                {src ? (
+                {src && video ? (
                   <>
-                    <video ref={videoRef} src={src} controls className="w-full max-h-56 block mt-1" />
+                    <div className="relative mt-1">
+                      <video ref={videoRef} src={src} controls className="w-full max-h-56 block" />
+                      <WristPathOverlay videoId={video.id} startAt={startAt} />
+                    </div>
                     <div className="flex items-center gap-2 p-2 text-xs">
                       <button onClick={() => stepFrame(-1)} className="border border-[var(--color-border)] rounded px-2 py-1 hover:bg-white/5">⟨ frame</button>
                       <button onClick={() => stepFrame(1)} className="border border-[var(--color-border)] rounded px-2 py-1 hover:bg-white/5">frame ⟩</button>
@@ -144,17 +153,18 @@ export function ComparisonStudio({
                   </button>
                 </div>
                 <div className="flex-1 flex items-center justify-center" style={{ transform: handedness === "left" ? "scaleX(-1)" : undefined }}>
-                  <ReferenceFigure phaseIndex={phaseIndex} totalPhases={ref.phases.length} />
+                  <ReferenceFigure progress={progress} contactAt={contactIndex >= 0 && totalPhases > 1 ? (contactIndex + 0.5) / totalPhases : null} />
                 </div>
+                <FootworkPath progress={progress} mirrored={handedness === "left"} />
                 <div className="px-3 pb-3">
                   <input
                     type="range"
                     min={0}
-                    max={ref.phases.length - 1}
-                    value={phaseIndex}
+                    max={100}
+                    value={Math.round(progress * 100)}
                     onChange={(e) => {
                       setPlaying(false);
-                      setPhaseIndex(Number(e.target.value));
+                      setProgress(Number(e.target.value) / 100);
                     }}
                     className="w-full accent-[var(--color-accent)]"
                   />
@@ -167,7 +177,7 @@ export function ComparisonStudio({
               {ref.phases.map((p, i) => (
                 <button
                   key={p.phase}
-                  onClick={() => { setPlaying(false); setPhaseIndex(i); }}
+                  onClick={() => { setPlaying(false); setProgress(totalPhases > 1 ? (i + 0.5) / totalPhases : 0); }}
                   className={`text-xs px-2.5 py-1 rounded-full border ${i === phaseIndex ? "bg-[var(--color-accent)] text-white border-[var(--color-accent)]" : "border-[var(--color-border)]"}`}
                 >
                   {i + 1}. {p.phase}
@@ -213,17 +223,89 @@ export function ComparisonStudio({
   );
 }
 
-// Animated reference figure — poses vary by phase progress. A stand-in for
-// full 3D skeletal animation (Phase 3).
-function ReferenceFigure({ phaseIndex, totalPhases }: { phaseIndex: number; totalPhases: number }) {
-  const progress = totalPhases > 1 ? phaseIndex / (totalPhases - 1) : 0;
+/** The user's racket-hand path around the insight moment, drawn from their own
+ * pose data (dominant-wrist estimate — the racket itself is not tracked). */
+function WristPathOverlay({ videoId, startAt }: { videoId: string; startAt: number | null }) {
+  const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
+
+  useEffect(() => {
+    if (startAt === null) return;
+    let cancelled = false;
+    api
+      .get<OverlayManifest>(`/videos/${videoId}/overlay-manifest`)
+      .then((manifest) => {
+        if (cancelled) return;
+        // find the "self" track from box roles
+        let selfTrackId: number | null = null;
+        for (const boxes of Object.values(manifest.boxes_by_frame)) {
+          const self = boxes.find((b) => b.role === "self");
+          if (self) { selfTrackId = self.track_id; break; }
+        }
+        if (selfTrackId === null) return;
+        const sampleFps = 10; // analysis frame rate (FRAME_SAMPLE_FPS)
+        const centerFrame = Math.round(startAt * sampleFps);
+        const trail: { x: number; y: number }[] = [];
+        for (let f = centerFrame - 8; f <= centerFrame + 8; f++) {
+          const poses = manifest.poses_by_frame[f];
+          const pose = poses?.find((p) => p.track_id === selfTrackId);
+          const wrist = pose?.landmarks.find((l) => l.name === "right_wrist") || pose?.landmarks.find((l) => l.name === "left_wrist");
+          if (wrist && (wrist.visibility ?? 0) > 0.4) trail.push({ x: wrist.x, y: wrist.y });
+        }
+        if (trail.length >= 4) setPoints(trail);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [videoId, startAt]);
+
+  if (points.length < 4) return null;
+  const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${(p.x * 100).toFixed(1)},${(p.y * 100).toFixed(1)}`).join(" ");
+  const last = points[points.length - 1];
+  return (
+    <>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none">
+        <path d={path} fill="none" stroke="var(--color-warn)" strokeWidth="0.7" strokeDasharray="2 1.2" opacity="0.9" />
+        <circle cx={last.x * 100} cy={last.y * 100} r="1.4" fill="var(--color-warn)" />
+      </svg>
+      <span className="absolute bottom-1 right-2 text-[9px] text-[var(--color-warn)] bg-black/50 rounded px-1.5 py-0.5 pointer-events-none">
+        racket-hand path (wrist estimate)
+      </span>
+    </>
+  );
+}
+
+// Smoothly animated reference figure with a racket-path arc and a
+// contact-point marker. A stand-in for full 3D skeletal animation, which
+// stays a needs-model/asset item.
+function ReferenceFigure({ progress, contactAt }: { progress: number; contactAt: number | null }) {
   const armAngle = -20 + progress * 150;
   const kneeBend = 10 + Math.sin(progress * Math.PI) * 22;
   const lean = Math.sin(progress * Math.PI) * 6;
+  const nearContact = contactAt !== null && Math.abs(progress - contactAt) < 0.09;
+
+  // racket-head position for the current arm angle (matches the rotate() below)
+  const rad = (armAngle * Math.PI) / 180;
+  const rhx = 80 + 38 * Math.cos(rad) - (-39) * Math.sin(rad);
+  const rhy = 65 + 38 * Math.sin(rad) + (-39) * Math.cos(rad);
+
+  // faint arc showing the racket head's full path through the swing
+  const arc = Array.from({ length: 25 }, (_, i) => {
+    const a = ((-20 + (i / 24) * 150) * Math.PI) / 180;
+    const x = 80 + 38 * Math.cos(a) - (-39) * Math.sin(a);
+    const y = 65 + 38 * Math.sin(a) + (-39) * Math.cos(a);
+    return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
 
   return (
-    <svg viewBox="0 0 160 180" width="150" height="170">
-      <line x1="30" y1="172" x2="130" y2="172" stroke="var(--color-border-strong)" strokeWidth="2" />
+    <svg viewBox="0 0 190 180" width="180" height="170">
+      <line x1="30" y1="172" x2="160" y2="172" stroke="var(--color-border-strong)" strokeWidth="2" />
+      <path d={arc} fill="none" stroke="var(--color-accent)" strokeWidth="1" strokeDasharray="3 3" opacity="0.35" />
+      {nearContact && (
+        <g>
+          <circle cx={rhx} cy={rhy} r="9" fill="none" stroke="var(--color-warn)" strokeWidth="1.5" opacity="0.9" />
+          <circle cx={rhx} cy={rhy} r="2.5" fill="var(--color-warn)" />
+          <text x={rhx + 12} y={rhy - 6} fontSize="8" fill="var(--color-warn)">contact</text>
+        </g>
+      )}
       <g transform={`rotate(${lean} 80 115)`}>
         <line x1="80" y1="60" x2="80" y2="115" stroke="#c7d4e8" strokeWidth="6" strokeLinecap="round" />
         <circle cx="80" cy="45" r="14" fill="#e7b790" />
@@ -239,5 +321,29 @@ function ReferenceFigure({ phaseIndex, totalPhases }: { phaseIndex: number; tota
       <line x1="80" y1="115" x2={80 + kneeBend} y2="145" stroke="#c7d4e8" strokeWidth="7" strokeLinecap="round" />
       <line x1={80 + kneeBend} y1="145" x2="95" y2="172" stroke="#c7d4e8" strokeWidth="7" strokeLinecap="round" />
     </svg>
+  );
+}
+
+// Footwork-path inset: a small top-down court patch showing the movement
+// in → plant → push-back path with a dot tracking the animation progress.
+function FootworkPath({ progress, mirrored }: { progress: number; mirrored: boolean }) {
+  // out-and-back path: base (center) -> target corner -> base
+  const t = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
+  const px = 30 + t * 55;
+  const py = 46 - t * 22;
+
+  return (
+    <div className="px-3 pb-1" style={{ transform: mirrored ? "scaleX(-1)" : undefined }}>
+      <svg viewBox="0 0 120 56" className="w-full h-14">
+        <rect x="4" y="4" width="112" height="48" rx="3" fill="none" stroke="var(--color-border)" strokeWidth="1.5" />
+        <line x1="4" y1="28" x2="116" y2="28" stroke="var(--color-border)" strokeWidth="1" opacity="0.6" />
+        <path d="M30,46 Q55,44 85,24" fill="none" stroke="var(--color-court)" strokeWidth="1.5" strokeDasharray="3 2" opacity="0.7" />
+        <path d="M85,24 Q58,36 30,46" fill="none" stroke="var(--color-ink-soft)" strokeWidth="1" strokeDasharray="2 2" opacity="0.45" />
+        <circle cx="30" cy="46" r="2.5" fill="var(--color-ink-soft)" />
+        <circle cx="85" cy="24" r="2.5" fill="var(--color-court)" />
+        <circle cx={px} cy={py} r="3.2" fill="var(--color-accent)" />
+        <text x="8" y="14" fontSize="6" fill="var(--color-ink-soft)">footwork path: move in → plant → push back</text>
+      </svg>
+    </div>
   );
 }

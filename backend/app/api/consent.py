@@ -20,6 +20,7 @@ class ConsentSettingsOut(BaseModel):
     default_clip_share_scope: str
     default_profile_share_scope: str
     retention_policy: str
+    share_progress_with_club: bool
 
     class Config:
         from_attributes = True
@@ -30,6 +31,7 @@ class ConsentSettingsUpdate(BaseModel):
     default_clip_share_scope: Optional[str] = None
     default_profile_share_scope: Optional[str] = None
     retention_policy: Optional[str] = None
+    share_progress_with_club: Optional[bool] = None
 
 
 def _get_or_create(db: Session, user_id: str) -> ConsentSettings:

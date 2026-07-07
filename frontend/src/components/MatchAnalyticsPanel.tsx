@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { MatchAnalytics, Video } from "../types";
+import type { DoublesRotationBlock, MatchAnalytics, Video } from "../types";
+import { DoublesRotationPanel } from "./DoublesRotationPanel";
 
 export function MatchAnalyticsPanel({ video }: { video: Video }) {
   const [analytics, setAnalytics] = useState<MatchAnalytics | null>(null);
@@ -21,6 +22,7 @@ export function MatchAnalyticsPanel({ video }: { video: Video }) {
   const dominance = blocks.court_dominance as any;
   const fatigue = blocks.fatigue_indicator as any;
   const strategy = blocks.strategy_recommendations as any;
+  const doubles = blocks.doubles_rotation as DoublesRotationBlock | undefined;
 
   return (
     <div className="space-y-4">
@@ -100,6 +102,15 @@ export function MatchAnalyticsPanel({ video }: { video: Video }) {
           )}
         </div>
       </div>
+
+      {doubles && (
+        <div className="border border-[var(--color-border)] rounded-lg bg-[var(--color-card)] p-4">
+          <BlockHeader title="Doubles rotation & formation" confidence={doubles.confidence} />
+          <div className="mt-2">
+            <DoublesRotationPanel block={doubles} />
+          </div>
+        </div>
+      )}
 
       {strategy?.available && (
         <div className="border border-[var(--color-border)] rounded-lg bg-[var(--color-card)] p-4">

@@ -60,6 +60,21 @@ export function PrivacyControls() {
         </select>
       </div>
 
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Share my progress with my clubs</p>
+          <p className="text-xs text-[var(--color-ink-soft)]">
+            Club team dashboards show your development score and matches analyzed. Off by default — never your videos or full analysis.
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          checked={settings.share_progress_with_club}
+          onChange={(e) => update({ share_progress_with_club: e.target.checked })}
+          className="w-4 h-4"
+        />
+      </div>
+
       <div>
         <p className="text-sm font-medium mb-1">Video retention</p>
         <select

@@ -74,7 +74,63 @@ def detect_shuttle_track(frames_native, min_resolution: Tuple[int, int] = (640, 
         points.append(ShuttlePoint(frame_index=frame_index, timestamp_s=timestamp_s, x_px=cx, y_px=cy, confidence=confidence))
         prev_point = (cx, cy)
 
-    return points
+    return refine_track(points)
+
+
+def refine_track(points: List[ShuttlePoint]) -> List[ShuttlePoint]:
+    """Phase-3 trajectory refinement: velocity-outlier rejection + a light
+    positional median filter, applied per continuous segment (segments split
+    at frame gaps). Points that survive inside long, consistent segments get a
+    modest confidence boost — still capped well below trained-detector levels,
+    because a consistent wrong track is still wrong."""
+    if len(points) < 5:
+        return points
+
+    # split into segments at frame gaps
+    segments: List[List[ShuttlePoint]] = [[points[0]]]
+    for prev, cur in zip(points, points[1:]):
+        if cur.frame_index - prev.frame_index > 6:
+            segments.append([cur])
+        else:
+            segments[-1].append(cur)
+
+    refined: List[ShuttlePoint] = []
+    for seg in segments:
+        if len(seg) < 3:
+            refined.extend(seg)
+            continue
+
+        # reject velocity outliers: a point whose step distance is far beyond
+        # the segment's median step is clutter grabbed by the greedy matcher
+        steps = [
+            ((b.x_px - a.x_px) ** 2 + (b.y_px - a.y_px) ** 2) ** 0.5
+            for a, b in zip(seg, seg[1:])
+        ]
+        sorted_steps = sorted(steps)
+        median_step = sorted_steps[len(sorted_steps) // 2]
+        keep = [seg[0]]
+        for i in range(1, len(seg)):
+            step = steps[i - 1]
+            if median_step > 0 and step > median_step * 4 and step > 40:
+                continue
+            keep.append(seg[i])
+        if len(keep) < 3:
+            refined.extend(keep)
+            continue
+
+        # 3-point positional median filter to damp blob-centroid jitter
+        seg_conf_boost = min(0.15, 0.02 * len(keep))  # longer consistent segment -> slightly more trust
+        for i, p in enumerate(keep):
+            window = keep[max(0, i - 1):i + 2]
+            xs = sorted(w.x_px for w in window)
+            ys = sorted(w.y_px for w in window)
+            refined.append(ShuttlePoint(
+                frame_index=p.frame_index, timestamp_s=p.timestamp_s,
+                x_px=xs[len(xs) // 2], y_px=ys[len(ys) // 2],
+                confidence=round(min(0.5, p.confidence + seg_conf_boost), 2),
+            ))
+
+    return refined
 
 
 def estimate_speed_mps(points: List[ShuttlePoint], px_per_meter: Optional[float]) -> List[float]:

@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
-import type { Club } from "../types";
+import type { Club, ClubDetail } from "../types";
 
 export function ClubsPanel() {
   const [clubs, setClubs] = useState<Club[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ClubDetail | null>(null);
 
   function refresh() {
     api.get<Club[]>("/community/clubs").then(setClubs).catch(() => {});
@@ -29,6 +31,21 @@ export function ClubsPanel() {
     refresh();
   }
 
+  async function toggleDetail(clubId: string) {
+    if (expanded === clubId) {
+      setExpanded(null);
+      setDetail(null);
+      return;
+    }
+    setExpanded(clubId);
+    setDetail(null);
+    try {
+      setDetail(await api.get<ClubDetail>(`/community/clubs/${clubId}`));
+    } catch {
+      setExpanded(null);
+    }
+  }
+
   return (
     <div className="space-y-3">
       {clubs.length === 0 && !creating && (
@@ -36,20 +53,61 @@ export function ClubsPanel() {
       )}
 
       {clubs.map((c) => (
-        <div key={c.club_id} className="border border-[var(--color-border)] rounded-lg bg-[var(--color-card)] p-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{c.name}</p>
-            <p className="text-xs text-[var(--color-ink-soft)] truncate">
-              {c.member_count} member{c.member_count === 1 ? "" : "s"}
-              {c.description ? ` · ${c.description}` : ""}
-            </p>
-          </div>
-          {c.my_role ? (
-            <span className="text-[10px] px-2 py-1 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-accent)] capitalize shrink-0">{c.my_role}</span>
-          ) : (
-            <button onClick={() => join(c.club_id)} className="text-xs bg-[var(--color-accent)] text-white rounded-md px-3 py-1.5 shrink-0 hover:bg-[var(--color-accent-dark)]">
-              Join
+        <div key={c.club_id} className="border border-[var(--color-border)] rounded-lg bg-[var(--color-card)]">
+          <div className="p-3 flex items-center justify-between gap-3">
+            <button onClick={() => c.my_role && toggleDetail(c.club_id)} className="min-w-0 text-left flex-1 disabled:cursor-default" disabled={!c.my_role}>
+              <p className="text-sm font-medium truncate">{c.name}</p>
+              <p className="text-xs text-[var(--color-ink-soft)] truncate">
+                {c.member_count} member{c.member_count === 1 ? "" : "s"}
+                {c.description ? ` · ${c.description}` : ""}
+                {c.my_role ? (expanded === c.club_id ? " · hide team view" : " · view team") : ""}
+              </p>
             </button>
+            {c.my_role ? (
+              <span className="text-[10px] px-2 py-1 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-accent)] capitalize shrink-0">{c.my_role}</span>
+            ) : (
+              <button onClick={() => join(c.club_id)} className="text-xs bg-[var(--color-accent)] text-white rounded-md px-3 py-1.5 shrink-0 hover:bg-[var(--color-accent-dark)]">
+                Join
+              </button>
+            )}
+          </div>
+
+          {expanded === c.club_id && (
+            <div className="border-t border-[var(--color-border)] p-3">
+              {!detail ? (
+                <p className="text-xs text-[var(--color-ink-soft)]">Loading team view…</p>
+              ) : (
+                <>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <h4 className="text-xs font-semibold uppercase text-[var(--color-ink-soft)]">Team dashboard</h4>
+                    {detail.team_dashboard.avg_development_score !== null && (
+                      <span className="text-xs">
+                        Team avg score: <span className="font-semibold text-[var(--color-accent)]">{detail.team_dashboard.avg_development_score}</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    {detail.members.map((m) => (
+                      <div key={m.user_id} className="flex items-center justify-between text-xs bg-[var(--color-bg-raised)] border border-[var(--color-border)] rounded-md px-2.5 py-1.5">
+                        <span className="truncate">
+                          {m.display_name}
+                          <span className="text-[var(--color-ink-soft)] capitalize"> · {m.role}</span>
+                        </span>
+                        {m.shares_progress ? (
+                          <span className="text-[var(--color-ink-soft)] shrink-0">
+                            score {m.development_score ?? "—"} · {m.matches_analyzed} match{m.matches_analyzed === 1 ? "" : "es"}
+                            {m.top_style ? ` · ${m.top_style}` : ""}
+                          </span>
+                        ) : (
+                          <span className="text-[var(--color-ink-soft)]/60 shrink-0">progress private</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-[var(--color-ink-soft)] mt-2">{detail.team_dashboard.note}</p>
+                </>
+              )}
+            </div>
           )}
         </div>
       ))}
