@@ -64,26 +64,33 @@ def _stability_insights(result: PipelineResult, track_id: int) -> List[Dict]:
 
 
 def _contact_point_insights(result: PipelineResult, track_id: int) -> List[Dict]:
-    insights = []
+    """One aggregated contact-point insight per overhead shot type (a stream of
+    near-identical per-shot comments is noise, not coaching). The timestamp
+    links to the clearest example of that shot type."""
+    shots_by_type: Dict[str, List] = {}
     for shot in result.shots:
         if shot.track_id != track_id or shot.contact_height != "overhead":
             continue
         frame_data = next((f for f in result.biomechanics.get(str(track_id), []) if f["frame_index"] == shot.frame_index), None)
         if not frame_data:
             continue
+        shots_by_type.setdefault(shot.shot_type, []).append(shot)
+
+    insights = []
+    for shot_type, type_shots in list(shots_by_type.items())[:2]:
+        best = max(type_shots, key=lambda s: s.confidence)
+        count_note = f"across {len(type_shots)} tracked {shot_type}s" if len(type_shots) > 1 else f"on your clearest tracked {shot_type}"
         insights.append({
             "category": "technique",
-            "timestamp_s": shot.timestamp_s,
-            "observed_action": f"On this {shot.shot_type}, your contact point was estimated based on wrist position relative to your head at the moment of the swing peak.",
+            "timestamp_s": best.timestamp_s,
+            "observed_action": f"Your overhead contact point was estimated from wrist-vs-head position at the swing peak {count_note}.",
             "likely_impact": "An overhead contact point that drifts behind the head typically shortens reach and can reduce shot depth.",
-            "correction": "Aim to make contact slightly in front of and above your head, reaching up rather than back.",
+            "correction": f"On your {shot_type}, aim to make contact slightly in front of and above your head, reaching up rather than back.",
             "drill_tags": ["clear_contact_point", "overhead_technique"],
-            "confidence": _capped_confidence(shot.confidence, 0.55),
+            "confidence": _capped_confidence(best.confidence, 0.55),
             "limitations": ["single_camera_no_depth", "contact_frame_approximate"],
-            "related_shot_type": shot.shot_type,
+            "related_shot_type": shot_type,
         })
-        if len(insights) >= 3:
-            break
     return insights
 
 

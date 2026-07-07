@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import type { User } from "../types";
 
 interface AuthContextValue {
@@ -25,7 +25,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .get<User>("/auth/me")
       .then(setUser)
-      .catch(() => localStorage.removeItem("token"))
+      .catch((err) => {
+        // Only discard the token when the server actually rejected it —
+        // a transient network failure (backend restart, proxy hiccup)
+        // should not log the user out.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          localStorage.removeItem("token");
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 

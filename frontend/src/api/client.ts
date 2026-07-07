@@ -4,6 +4,15 @@ function getToken(): string | null {
   return localStorage.getItem("token");
 }
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status; // 0 = network-level failure (no HTTP response)
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
@@ -12,7 +21,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...options, headers });
+  } catch (err) {
+    throw new ApiError(err instanceof Error ? err.message : "Network error", 0);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -21,7 +35,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       /* ignore */
     }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new ApiError(typeof detail === "string" ? detail : JSON.stringify(detail), res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
