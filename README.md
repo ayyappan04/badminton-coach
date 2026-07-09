@@ -71,6 +71,21 @@ See [docs/](docs/) for the full system design:
 - **Shuttle trajectory refinement**: segment-wise outlier rejection and
   median smoothing — still labeled experimental, confidence capped.
 
+## What's new in Phase 4
+
+- **Coach reviews**: invite a real coach to any match (per video, revocable).
+  The coach gets a scoped workspace — video, AI insights, and timestamped
+  notes that confirm/adjust/override the AI — and their notes appear on your
+  dashboard next to the AI's. Revoking ends their access instantly.
+- **Full social loop**: challenges with accept → record-result lifecycle,
+  shared progress milestones (derived facts only, honoring each friend's
+  share scope), and group practice sessions visible to participants.
+- **Integration API**: scoped, revocable, read-only keys (`X-API-Key`) for
+  club/league tools — profile and match summaries only, never video.
+
+Demo users: `arun.demo@example.com` and `priya.demo@example.com` (password
+`testpass123`) — Priya has an active coach review on Arun's first match.
+
 ## What's implemented (Phase 0 / MVP)
 
 - Real (not mocked) CV pipeline: OpenCV court-line detection, HOG-based player

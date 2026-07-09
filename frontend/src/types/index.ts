@@ -272,3 +272,71 @@ export interface SharedClipItem {
   visibility: string;
   caption: string | null;
 }
+
+// ---- Phase 4 types ----
+
+export interface CoachNoteItem {
+  note_id: string;
+  timestamp_s: number;
+  comment: string;
+  related_insight_id: string | null;
+  stance: string | null;
+  created_at: string | null;
+  coach_name?: string;
+}
+
+export interface ReviewSummary {
+  review_id: string;
+  video_id: string;
+  status: string;
+  video_filename: string | null;
+  match_format: string | null;
+  student_name: string | null;
+  coach_name: string | null;
+  message: string | null;
+  note_count: number;
+}
+
+export interface ReviewDetail {
+  review_id: string;
+  video: { video_id: string; filename: string | null; match_format: string | null; duration_seconds: number | null };
+  student_name: string | null;
+  message: string | null;
+  ai_insights: { insight_id: string; timestamp_s: number; category: string; observed_action: string; correction: string; confidence: number }[];
+  notes: CoachNoteItem[];
+}
+
+export interface ChallengeItem {
+  challenge_id: string;
+  created_by_user_id: string;
+  opponent_user_id: string;
+  description: string | null;
+  status: string;
+  result: string | null;
+  challenger_name: string;
+  opponent_name: string;
+  i_am_opponent: boolean;
+}
+
+export interface MilestoneItem {
+  who: string;
+  milestone: string;
+  kind: string;
+}
+
+export interface ApiKeyItem {
+  key_id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string;
+  revoked: boolean;
+  last_used_at: string | null;
+}
+
+export interface FriendItem {
+  friendship_id: string;
+  user_id: string;
+  display_name: string;
+  status: string;
+  requested_by_me: boolean;
+}

@@ -5,6 +5,10 @@ import { PracticePlanner } from "../components/PracticePlanner";
 import { PrivacyControls } from "../components/PrivacyControls";
 import { ClubsPanel } from "../components/ClubsPanel";
 import { SharedClipsPanel } from "../components/SharedClipsPanel";
+import { ReviewsPanel } from "../components/ReviewsPanel";
+import { ChallengesPanel } from "../components/ChallengesPanel";
+import { MilestonesStrip } from "../components/MilestonesStrip";
+import { ApiKeysPanel } from "../components/ApiKeysPanel";
 import { useAuth } from "../context/AuthContext";
 
 export function Community() {
@@ -32,6 +36,8 @@ export function Community() {
         )}
       </div>
 
+      <MilestonesStrip />
+
       <div className="grid md:grid-cols-2 gap-8">
         <section>
           <h2 className="font-semibold mb-3">Friends &amp; training partners</h2>
@@ -43,6 +49,16 @@ export function Community() {
         </section>
       </div>
 
+      <section>
+        <h2 className="font-semibold mb-3">Coaching reviews</h2>
+        <ReviewsPanel />
+      </section>
+
+      <section>
+        <h2 className="font-semibold mb-3">Friendly challenges</h2>
+        <ChallengesPanel />
+      </section>
+
       <div className="grid md:grid-cols-2 gap-8">
         <section>
           <h2 className="font-semibold mb-3">Clubs</h2>
@@ -53,6 +69,11 @@ export function Community() {
           <SharedClipsPanel currentUserId={user?.id ?? ""} />
         </section>
       </div>
+
+      <section>
+        <h2 className="font-semibold mb-3">Integration API keys</h2>
+        <ApiKeysPanel />
+      </section>
 
       <section>
         <h2 className="font-semibold mb-3">Privacy controls</h2>

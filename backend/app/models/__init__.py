@@ -6,6 +6,8 @@ from app.models.profile import PlayerProfile, ProfileHistorySnapshot
 from app.models.community import Friendship, SharedClip, PracticePlan, Challenge, Club, ClubMembership
 from app.models.training_data import TrainingAsset, ConsentRecord, Annotation
 from app.models.corrections import UserCorrection, ProcessingJob
+from app.models.coach_review import CoachReview, CoachNote
+from app.models.api_key import ApiKey
 
 __all__ = [
     "User", "ConsentSettings",
@@ -16,4 +18,6 @@ __all__ = [
     "Friendship", "SharedClip", "PracticePlan", "Challenge", "Club", "ClubMembership",
     "TrainingAsset", "ConsentRecord", "Annotation",
     "UserCorrection", "ProcessingJob",
+    "CoachReview", "CoachNote",
+    "ApiKey",
 ]

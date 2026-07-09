@@ -109,8 +109,17 @@ def stream_video(video_id: str, token: str = Query(...)):
     db = SessionLocal()
     try:
         video = db.get(Video, video_id)
-        if not video or video.owner_user_id != user_id:
+        if not video:
             raise HTTPException(status_code=404, detail="Video not found")
+        if video.owner_user_id != user_id:
+            # Phase 4: a coach with an ACTIVE review on this exact video may
+            # watch it — the only non-owner streaming path.
+            from app.models.coach_review import CoachReview
+            review = db.query(CoachReview).filter_by(
+                video_id=video_id, coach_user_id=user_id, status="active"
+            ).first()
+            if not review:
+                raise HTTPException(status_code=404, detail="Video not found")
         return FileResponse(video.storage_path, media_type="video/mp4", filename=video.original_filename)
     finally:
         db.close()

@@ -140,11 +140,25 @@ def create_practice_plan(payload: PracticePlanCreate, current_user: User = Depen
 
 @router.get("/practice-plans")
 def list_practice_plans(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    plans = db.query(PracticePlan).filter_by(created_by_user_id=current_user.id).order_by(PracticePlan.scheduled_at).all()
+    """Plans I created plus group sessions where a friend added me as a
+    participant (Phase 4 group training)."""
+    own = db.query(PracticePlan).filter_by(created_by_user_id=current_user.id).all()
+    own_ids = {p.id for p in own}
+    invited = [
+        p for p in db.query(PracticePlan).all()
+        if p.id not in own_ids and current_user.id in (p.participants or [])
+    ]
+    plans = sorted(own + invited, key=lambda p: p.scheduled_at)
+    names = {}
     return [{
         "plan_id": p.id, "kind": p.kind, "participants": p.participants,
         "scheduled_at": p.scheduled_at.isoformat(), "location": p.location,
         "notes": p.notes, "linked_drill_ids": p.linked_drill_ids,
+        "created_by_me": p.created_by_user_id == current_user.id,
+        "organizer_name": names.setdefault(
+            p.created_by_user_id,
+            (db.get(User, p.created_by_user_id).display_name if db.get(User, p.created_by_user_id) else "Unknown"),
+        ),
     } for p in plans]
 
 
@@ -290,9 +304,93 @@ def create_challenge(payload: ChallengeCreate, current_user: User = Depends(get_
 def list_challenges(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(Challenge).filter(
         or_(Challenge.created_by_user_id == current_user.id, Challenge.opponent_user_id == current_user.id)
-    ).all()
+    ).order_by(Challenge.created_at.desc()).all()
+    names = {}
+
+    def name_of(uid):
+        if uid not in names:
+            u = db.get(User, uid)
+            names[uid] = u.display_name if u else "Unknown"
+        return names[uid]
+
     return [{
         "challenge_id": c.id, "created_by_user_id": c.created_by_user_id,
         "opponent_user_id": c.opponent_user_id, "description": c.description,
         "status": c.status, "result": c.result,
+        "challenger_name": name_of(c.created_by_user_id),
+        "opponent_name": name_of(c.opponent_user_id),
+        "i_am_opponent": c.opponent_user_id == current_user.id,
     } for c in rows]
+
+
+@router.post("/challenges/{challenge_id}/accept")
+def accept_challenge(challenge_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    c = db.get(Challenge, challenge_id)
+    if not c or c.opponent_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    if c.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Challenge is already {c.status}")
+    c.status = "accepted"
+    db.commit()
+    return {"status": "accepted"}
+
+
+class ChallengeComplete(BaseModel):
+    result: str  # free-text, e.g. "Arun won 21-18"
+
+
+@router.post("/challenges/{challenge_id}/complete")
+def complete_challenge(challenge_id: str, payload: ChallengeComplete,
+                       current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    c = db.get(Challenge, challenge_id)
+    if not c or current_user.id not in (c.created_by_user_id, c.opponent_user_id):
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    if c.status != "accepted":
+        raise HTTPException(status_code=400, detail="Only accepted challenges can be completed")
+    c.status = "completed"
+    c.result = payload.result
+    db.commit()
+    return {"status": "completed", "result": c.result}
+
+
+# ---- Shared progress milestones (Phase 4) ----
+
+@router.get("/community/milestones")
+def milestones(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Recent progress milestones for me and — where their profile share scope
+    allows — my accepted friends. Milestones are derived facts (match counts,
+    streaks, first doubles match), never raw analysis data."""
+    from app.models.user import ConsentSettings
+    from app.models.profile import PlayerProfile
+
+    friend_ids = set()
+    for r in db.query(Friendship).filter(
+        or_(Friendship.user_id_a == current_user.id, Friendship.user_id_b == current_user.id),
+        Friendship.status == "accepted",
+    ).all():
+        friend_ids.add(r.user_id_b if r.user_id_a == current_user.id else r.user_id_a)
+
+    def milestones_for(user_id: str, name: str, is_self: bool):
+        found = []
+        profile = db.query(PlayerProfile).filter_by(user_id=user_id).first()
+        count = profile.matches_analyzed_count if profile else 0
+        for threshold in (1, 5, 10, 25, 50):
+            if count >= threshold:
+                found.append({"who": "You" if is_self else name, "milestone": f"{threshold} match{'es' if threshold > 1 else ''} analyzed", "kind": "matches"})
+        if db.query(Video).filter_by(owner_user_id=user_id, match_format="doubles", status="analyzed").count() > 0:
+            found.append({"who": "You" if is_self else name, "milestone": "First doubles match analyzed", "kind": "doubles"})
+        if profile and profile.radar_scores:
+            scores = [v["score"] for v in profile.radar_scores.values() if isinstance(v, dict) and v.get("score") is not None]
+            if scores and sum(scores) / len(scores) >= 50:
+                found.append({"who": "You" if is_self else name, "milestone": "Development score reached 50", "kind": "score"})
+        return found[-3:]  # most significant few, not an endless list
+
+    result = milestones_for(current_user.id, "You", True)
+    for fid in friend_ids:
+        consent = db.query(ConsentSettings).filter_by(user_id=fid).first()
+        scope = consent.default_profile_share_scope if consent else "private"
+        if scope in ("friends", "public"):
+            friend = db.get(User, fid)
+            if friend:
+                result.extend(milestones_for(fid, friend.display_name, False))
+    return {"milestones": result}

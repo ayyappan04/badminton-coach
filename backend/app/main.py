@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.session import Base, engine
 import app.models  # noqa: F401 register all models on Base.metadata
-from app.api import auth, videos, profile, technique, community, consent, coach
+from app.api import auth, videos, profile, technique, community, consent, coach, coach_reviews, integration
 from app.seed_content import seed as seed_content
 
 Base.metadata.create_all(engine)
@@ -26,6 +26,8 @@ app.include_router(technique.router, prefix="/api/v1")
 app.include_router(community.router, prefix="/api/v1")
 app.include_router(consent.router, prefix="/api/v1")
 app.include_router(coach.router, prefix="/api/v1")
+app.include_router(coach_reviews.router, prefix="/api/v1")
+app.include_router(integration.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

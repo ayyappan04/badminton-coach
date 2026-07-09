@@ -15,6 +15,7 @@ import { TrainingPlanPanel } from "../components/TrainingPlanPanel";
 import { OverviewStrip } from "../components/OverviewStrip";
 import { QualityReportCard } from "../components/QualityReportCard";
 import { MatchAnalyticsPanel } from "../components/MatchAnalyticsPanel";
+import { CoachReviewSection } from "../components/CoachReviewSection";
 import { CompareDrawer } from "../components/CompareDrawer";
 import { ComparisonStudio } from "../components/ComparisonStudio";
 
@@ -142,6 +143,11 @@ export function Dashboard() {
                   onSeek={setSeekTime}
                   onOpenTechnique={(name, timestamp) => setStudio({ name, startAt: timestamp })}
                 />
+              </section>
+
+              <section>
+                <h2 className="font-semibold mb-3">Coach review</h2>
+                <CoachReviewSection video={selected} onSeek={setSeekTime} />
               </section>
 
               <section>

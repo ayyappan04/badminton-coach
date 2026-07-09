@@ -57,8 +57,25 @@ Still model/asset-gated (unchanged honesty boundary):
 - Multi-camera or monocular-depth 3D pose lifting; contact-angle / shuttle-spin estimation.
 - Full 3D skeletal animation for the simulator (current reference is a 2D animated figure).
 
-## Phase 4 — Scale & ecosystem
+## Phase 4 — Scale & ecosystem (shipped in this repo)
 
-- Full community/social feature set: clubs, group training, challenges, shared milestone tracking.
-- Coach-facing view: a human coach can review a student's AI-generated analysis and annotate/override insights.
-- Public API for club/federation integrations (with the same consent/licensing safeguards extended to any bulk footage they provide).
+Delivered:
+- Coach review workflow: a student invites a coach (per video, revocable any
+  time) — the coach gets a review-scoped workspace with the match video, the
+  AI insights, and timestamped notes that can confirm / adjust / override
+  the AI. Notes appear on the student's dashboard beside the AI insights.
+  Access is enforced end-to-end: revoking a review cuts the coach's detail
+  view and video stream immediately.
+- Full social loop: friendly challenges with an accept → record-result
+  lifecycle; shared progress milestones (derived facts only, respecting each
+  friend's profile share scope); group practice sessions visible to invited
+  participants, not just the organizer.
+- Public integration API: scoped, revocable, read-only API keys (hashed at
+  rest, plaintext shown once) exposing profile-summary and match-summary
+  endpoints via X-API-Key — raw video and frame-level data are never
+  available through keys.
+
+Remaining scale work (deployment-stage, not feature-stage): Postgres +
+object storage + worker-queue deployment shape from ARCHITECTURE.md §6,
+notifications, and federation bulk-footage onboarding under the existing
+licensing/consent governance.
