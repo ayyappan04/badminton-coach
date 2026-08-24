@@ -113,7 +113,11 @@ def test_no_secrets_committed_to_the_repo():
     suspicious = []
     needles = ("sk-ant-", "sk-live-", "AKIA", "-----BEGIN RSA PRIVATE KEY-----",
                "-----BEGIN OPENSSH PRIVATE KEY-----")
+    self_rel = str(Path(__file__).resolve().relative_to(repo))
     for rel in tracked:
+        # Skip this file: it necessarily contains the patterns it searches for.
+        if rel == self_rel:
+            continue
         f = repo / rel
         if not f.is_file() or f.suffix in {".png", ".jpg", ".svg", ".ico", ".mp4"}:
             continue

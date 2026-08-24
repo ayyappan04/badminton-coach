@@ -15,3 +15,8 @@ frontend/dist/
 *.log
 .DS_Store
 .claude/
+
+# The push credential for this repo lacks GitHub's `workflow` OAuth scope,
+# so files here cannot be pushed. The intended CI workflow is version-
+# controlled at docs/ci/ci.yml — see docs/ci/README.md to activate it.
+.github/workflows/
