@@ -1,0 +1,64 @@
+Run started:2026-08-24 23:24:48.839138
+
+Test results:
+>> Issue: [B105:hardcoded_password_string] Possible hardcoded password: 'password_reset'
+   Severity: Low   Confidence: Medium
+   CWE: CWE-259 (https://cwe.mitre.org/data/definitions/259.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b105_hardcoded_password_string.html
+   Location: app/core/tokens.py:25:25
+24	PURPOSE_VERIFY_EMAIL = "verify_email"
+25	PURPOSE_PASSWORD_RESET = "password_reset"
+26	
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b112_try_except_continue.html
+   Location: app/services/analysis_service.py:200:8
+199	            x, y = pixel_to_court(homography, b["x"] + b["w"] / 2, b["y"] + b["h"])
+200	        except Exception:
+201	            continue
+202	        positions.append({"timestamp_s": b["frame_index"] / FRAME_SAMPLE_FPS, "x": x, "y": y})
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b112_try_except_continue.html
+   Location: app/services/analysis_service.py:307:8
+306	            x, y = pixel_to_court(result.calibration.homography, box.x + box.w / 2, box.y + box.h)
+307	        except Exception:
+308	            continue
+309	        positions.append({"timestamp_s": box.frame_index / FRAME_SAMPLE_FPS, "x": x, "y": y})
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.8.6/plugins/b112_try_except_continue.html
+   Location: app/services/cv_pipeline/tactics.py:26:8
+25	            cx, cy = pixel_to_court(homography, cx_px, cy_px)
+26	        except Exception:
+27	            continue
+28	        points.append((box.frame_index, cx, cy))
+
+--------------------------------------------------
+
+Code scanned:
+	Total lines of code: 5441
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 4
+		Medium: 0
+		High: 0
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 1
+		High: 3
+Files skipped (0):

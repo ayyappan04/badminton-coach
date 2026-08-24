@@ -114,6 +114,31 @@ detection is experimental, shot recognition is rule-based rather than a
 trained classifier, and the technique simulator uses an animated stick figure
 rather than full 3D skeletal animation.
 
+## Security & authentication
+
+Email/password authentication with signup, login, server-side logout, email
+verification, and password reset. Every video and analysis result is owned by
+a user and access is enforced server-side; uploads are size-capped,
+content-validated, and quota-limited.
+
+Full model, verification commands, and the honest limitation list:
+**[docs/SECURITY.md](docs/SECURITY.md)**. Configuration reference:
+**[.env.example](.env.example)**.
+
+Verify it yourself:
+
+```bash
+cd backend && source .venv/bin/activate
+python -m pytest tests/ -q            # 98 tests: auth, isolation, uploads, injection
+uvicorn app.main:app --port 8131 &    # then, in another shell:
+python -m tests.smoke_live            # 35 live end-to-end checks
+python -m tests.run_video_matrix      # badminton scenarios through the real pipeline
+```
+
+> **Runtime note:** the backend currently runs on Python 3.9, which is
+> end-of-life. Several dependency security fixes require Python 3.10+ and are
+> blocked until the runtime is upgraded — see docs/SECURITY.md §6.
+
 ## Running it locally
 
 ### Backend

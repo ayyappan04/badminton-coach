@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: nothing here needs write access.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (tests + security)
+    runs-on: ubuntu-latest
+    env:
+      # Test-only values. Real secrets never appear in CI config.
+      APP_ENV: development
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else
+      MAIL_BACKEND: console
+      DATABASE_URL: sqlite:///./ci.db
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Matches the current runtime. See docs/SECURITY.md — moving to 3.11
+          # is required to pick up the patched python-multipart / Starlette.
+          python-version: "3.9"
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Unit / integration / security tests
+        working-directory: backend
+        run: python -m pytest tests/ -q --timeout=300
+
+      - name: Dependency audit (advisory)
+        working-directory: backend
+        continue-on-error: true   # Python 3.9 caps several fixes; tracked in docs/SECURITY.md
+        run: |
+          pip install pip-audit
+          pip-audit --progress-spinner off
+
+      - name: Static analysis (bandit)
+        working-directory: backend
+        run: |
+          pip install bandit
+          # Fail only on medium+ severity findings.
+          bandit -r app/ -q -ll
+
+  frontend:
+    name: Frontend (typecheck + lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc -b --noEmit
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Dependency audit
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks needs history to scan past commits
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

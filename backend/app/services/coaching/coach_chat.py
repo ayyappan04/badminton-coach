@@ -27,6 +27,29 @@ SUGGESTED_QUESTIONS = [
     "What's my weakest footwork pattern?",
 ]
 
+# Checked BEFORE every other intent. A question mentioning pain or injury must
+# never be answered as a technique question, even though it usually also
+# contains technique words ("sharp pain when I lunge" also matches "balance").
+MEDICAL_KEYWORDS = [
+    "pain", "painful", "hurts", "hurting", "injur", "injury", "injured",
+    "sprain", "strain", "tear", "torn", "swollen", "swelling", "ache", "aching",
+    "tendon", "tendinitis", "tendonitis", "acl", "meniscus", "fracture",
+    "diagnos", "physio", "physiotherap", "doctor", "medical", "concussion",
+    "dizzy", "numb", "inflamed", "shin splint", "rehab",
+]
+
+MEDICAL_RESPONSE = (
+    "That sounds like something to get looked at rather than coached through. "
+    "I analyse video — I can't examine you, and I won't try to diagnose what's "
+    "causing it. Please stop playing on it and see a physiotherapist, sports "
+    "doctor, or another qualified medical professional, especially if the pain "
+    "is sharp, swelling, or getting worse.\n\n"
+    "Once a professional has cleared you, come back and I'll happily look at "
+    "the movement patterns in your footage — landing mechanics and recovery "
+    "position are things I can comment on from video."
+)
+
+
 INTENTS = [
     ("net", ["net", "front court", "forecourt", "kill"]),
     ("footwork", ["footwork", "split step", "split-step", "moving", "movement pattern", "slow to"]),
@@ -41,6 +64,17 @@ INTENTS = [
 
 def answer_question(db: Session, user_id: str, question: str) -> Dict:
     q = question.lower()
+
+    # Safety gate first: pain/injury questions are never routed to a coaching
+    # handler, regardless of what else the question mentions.
+    if any(k in q for k in MEDICAL_KEYWORDS):
+        return {
+            "answer": MEDICAL_RESPONSE,
+            "evidence": [],
+            "suggested_questions": ["What's my weakest footwork pattern?", "How is my progress trending?"],
+            "confidence": None,
+        }
+
     intent = None
     for name, keywords in INTENTS:
         if any(k in q for k in keywords):

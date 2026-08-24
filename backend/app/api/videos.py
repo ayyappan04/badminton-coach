@@ -1,16 +1,16 @@
-import shutil
-import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, resolve_user_from_token
+from app.core import config
 from app.core.config import UPLOADS_DIR
-from app.core.security import decode_access_token
+from app.core.rate_limit import check as rate_limit_check
+from app.core.uploads import save_upload, ALLOWED_EXTENSIONS
 from app.db.session import get_db, SessionLocal
 from app.models.user import User
 from app.models.video import Video, Calibration, TrackedPerson
@@ -24,7 +24,6 @@ from app import worker
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
-ALLOWED_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi"}
 
 
 class VideoOut(BaseModel):
@@ -46,27 +45,55 @@ class VideoOut(BaseModel):
         from_attributes = True
 
 
+VALID_MATCH_FORMATS = {"singles", "doubles", "unknown"}
+
+
 @router.post("", response_model=VideoOut)
 def upload_video(
+    request: Request,
     file: UploadFile = File(...),
     match_format: str = Form("unknown"),
     opponent_name: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type '{ext}'. Supported: {sorted(ALLOWED_EXTENSIONS)}")
+    """Accept a match recording.
 
-    dest_name = f"{uuid.uuid4()}{ext}"
-    dest_path = UPLOADS_DIR / dest_name
-    with dest_path.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    Hardening applied here (see app/core/uploads.py):
+    streaming size cap, container magic-byte validation, server-generated
+    storage filename, sanitised display filename, per-user hourly rate limit
+    and total storage quota.
+    """
+    rate_limit_check(f"upload:{current_user.id}", (config.MAX_UPLOADS_PER_HOUR, 3600))
+
+    if match_format not in VALID_MATCH_FORMATS:
+        raise HTTPException(status_code=400, detail=f"match_format must be one of {sorted(VALID_MATCH_FORMATS)}")
+
+    used = sum(
+        (Path(v.storage_path).stat().st_size if Path(v.storage_path).exists() else 0)
+        for v in db.query(Video).filter_by(owner_user_id=current_user.id).all()
+    )
+    if used >= config.MAX_STORAGE_BYTES_PER_USER:
+        raise HTTPException(
+            status_code=507,
+            detail=(
+                f"You have reached your {config.MAX_STORAGE_BYTES_PER_USER // (1024*1024)} MB "
+                "storage limit. Delete an old match to free space."
+            ),
+        )
+
+    dest_path, display_name, size_bytes = save_upload(file)
+
+    if used + size_bytes > config.MAX_STORAGE_BYTES_PER_USER:
+        dest_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=507, detail="This upload would exceed your storage limit.")
+
+    safe_opponent = (opponent_name or "").strip()[:80] or None
 
     video = Video(
         owner_user_id=current_user.id, storage_path=str(dest_path),
-        original_filename=file.filename, match_format=match_format,
-        opponent_name=opponent_name, status="uploaded",
+        original_filename=display_name, match_format=match_format,
+        opponent_name=safe_opponent, status="uploaded",
     )
     db.add(video)
     db.commit()
@@ -103,11 +130,12 @@ def delete_video(video_id: str, current_user: User = Depends(get_current_user), 
 def stream_video(video_id: str, token: str = Query(...)):
     # <video> elements can't set Authorization headers, so the stream endpoint
     # accepts the JWT as a query parameter instead of via get_current_user.
-    user_id = decode_access_token(token)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
     db = SessionLocal()
     try:
+        user = resolve_user_from_token(db, token)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        user_id = user.id
         video = db.get(Video, video_id)
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
@@ -120,7 +148,13 @@ def stream_video(video_id: str, token: str = Query(...)):
             ).first()
             if not review:
                 raise HTTPException(status_code=404, detail="Video not found")
-        return FileResponse(video.storage_path, media_type="video/mp4", filename=video.original_filename)
+        stored = Path(video.storage_path).resolve()
+        if stored.parent != Path(UPLOADS_DIR).resolve() or not stored.exists():
+            raise HTTPException(status_code=404, detail="Video file is no longer available")
+        # `filename=` is omitted deliberately: Starlette would put it in a
+        # Content-Disposition header, and the display name is user-controlled.
+        return FileResponse(str(stored), media_type="video/mp4",
+                            headers={"X-Content-Type-Options": "nosniff"})
     finally:
         db.close()
 

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export function AuthForms() {
@@ -73,10 +74,15 @@ export function AuthForms() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={8}
+            minLength={10}
           />
         </label>
         {error && <p className="text-sm text-[var(--color-bad)]">{error}</p>}
+        {mode === "register" && (
+          <p className="text-xs text-[var(--color-ink-soft)] -mt-1">
+            At least 10 characters, using three of: lowercase, uppercase, digits, symbols.
+          </p>
+        )}
         <button
           type="submit"
           disabled={busy}
@@ -84,6 +90,11 @@ export function AuthForms() {
         >
           {busy ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
         </button>
+        {mode === "login" && (
+          <Link to="/forgot-password" className="text-xs text-[var(--color-accent)] hover:underline text-center">
+            Forgot your password?
+          </Link>
+        )}
       </form>
     </div>
   );

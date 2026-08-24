@@ -1,14 +1,31 @@
-fastapi==0.111.0
+# NOTE ON THE RUNTIME
+# This project currently runs on Python 3.9, which reached end of life in
+# October 2025. Several security fixes below are capped by that: the patched
+# releases of python-multipart (>=0.0.21), FastAPI (>=0.129) and Starlette
+# (1.x) all require Python >=3.10. Moving to Python 3.11+ is tracked as a
+# HIGH-priority item in docs/SECURITY.md and unblocks those upgrades.
+
+fastapi==0.111.0            # capped by Python 3.9; upgrade with the runtime
 uvicorn[standard]==0.30.1
 sqlalchemy==2.0.30
 pydantic==2.7.4
-python-multipart==0.0.9
-python-jose[cryptography]==3.3.0
+email-validator==2.1.1
+python-multipart==0.0.20    # 0.0.9 -> 0.0.20 (DoS advisories); >=0.0.21 needs py3.10
+
+# Auth. PyJWT replaces python-jose, which pulled in `ecdsa` — that package has
+# a known Minerva timing-attack advisory with no fix available.
+PyJWT==2.13.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
+
+# Computer vision
 opencv-python==4.10.0.84
 mediapipe==0.10.14
 numpy
+
 python-dotenv==1.0.1
+
+# --- dev/test only ---------------------------------------------------------
 pytest==8.2.2
+pytest-timeout==2.3.1
 httpx==0.27.0

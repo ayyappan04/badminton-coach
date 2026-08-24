@@ -4,6 +4,7 @@ and docs/V2_DESIGN.md for the stage diagrams this function implements.
 """
 from typing import Callable, Dict, List, Optional
 
+from app.core import config
 from app.core.config import FRAME_SAMPLE_FPS, MIN_RESOLUTION_FOR_SHUTTLE
 from app.services.cv_pipeline import (
     frame_extraction, court_detection, player_tracking, pose_estimation,
@@ -22,6 +23,26 @@ def run_pipeline(video_path: str, progress_cb: Optional[Callable[[int, str], Non
 
     report(2, "reading_video_metadata")
     meta = frame_extraction.read_video_meta(video_path)
+
+    if meta.duration_s > config.MAX_VIDEO_DURATION_S:
+        # Refuse before doing any decoding work: an arbitrarily long video is
+        # a cheap way to occupy a worker indefinitely.
+        return PipelineResult(
+            meta=meta,
+            calibration=court_detection.detect_court([]),
+            tracks=[], poses=[], shuttle_points=[], rallies=[], shots=[],
+            biomechanics={}, tactics={},
+            limitations=["video_too_long"],
+            quality={
+                "score": 0, "usable": False, "factors": {}, "camera_cuts": [],
+                "recommendations": [
+                    f"This recording is {int(meta.duration_s // 60)} minutes long. "
+                    f"Please upload a clip of at most "
+                    f"{config.MAX_VIDEO_DURATION_S // 60} minutes — trim to the "
+                    "games or rallies you want analysed."
+                ],
+            },
+        )
 
     report(5, "assessing_video_quality")
     quality = video_quality.assess_video_quality(video_path)

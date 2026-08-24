@@ -1,0 +1,379 @@
+[
+  {
+    "scenario": "singles_rally",
+    "description": "Singles rally, tripod side view, good light",
+    "size_mb": 1.77,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 12.0,
+    "quality_score": 84,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.71,
+    "tracks": 4,
+    "poses": 2,
+    "shuttle_pts": 258,
+    "rallies": 2,
+    "shots": 0,
+    "limitations": [],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 7.4,
+    "realtime_ratio": 0.6
+  },
+  {
+    "scenario": "doubles_rally",
+    "description": "Doubles rally, 4 players",
+    "size_mb": 2.02,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 12.0,
+    "quality_score": 84,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.71,
+    "tracks": 6,
+    "poses": 4,
+    "shuttle_pts": 262,
+    "rallies": 1,
+    "shots": 0,
+    "limitations": [],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 8.6,
+    "realtime_ratio": 0.7
+  },
+  {
+    "scenario": "low_light",
+    "description": "Poorly lit hall",
+    "size_mb": 0.61,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 52,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "fallback_full_frame",
+    "court_conf": 0.15,
+    "tracks": 1,
+    "poses": 0,
+    "shuttle_pts": 129,
+    "rallies": 0,
+    "shots": 0,
+    "limitations": [
+      "auto_detection_failed",
+      "needs_user_calibration",
+      "no_pose_landmarks_detected",
+      "no_rallies_segmented"
+    ],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis.",
+      "The recording is dark \u2014 more court lighting will noticeably improve tracking."
+    ],
+    "elapsed_s": 3.9,
+    "realtime_ratio": 0.5
+  },
+  {
+    "scenario": "motion_blur",
+    "description": "Heavy motion blur / soft focus",
+    "size_mb": 0.67,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 60,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.6,
+    "tracks": 2,
+    "poses": 1,
+    "shuttle_pts": 159,
+    "rallies": 1,
+    "shots": 0,
+    "limitations": [],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis.",
+      "Frames are soft or motion-blurred \u2014 avoid digital zoom and clean the lens."
+    ],
+    "elapsed_s": 5.1,
+    "realtime_ratio": 0.6
+  },
+  {
+    "scenario": "camera_shake",
+    "description": "Handheld, shaky camera",
+    "size_mb": 5.48,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 79,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.85,
+    "tracks": 2,
+    "poses": 1,
+    "shuttle_pts": 202,
+    "rallies": 1,
+    "shots": 0,
+    "limitations": [],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 4.8,
+    "realtime_ratio": 0.6
+  },
+  {
+    "scenario": "camera_cuts",
+    "description": "Edited footage with a hard scene cut",
+    "size_mb": 1.3,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 10.0,
+    "quality_score": 81,
+    "usable": true,
+    "camera_cuts": 2,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.71,
+    "tracks": 4,
+    "poses": 2,
+    "shuttle_pts": 185,
+    "rallies": 1,
+    "shots": 0,
+    "limitations": [
+      "camera_cuts_detected"
+    ],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis.",
+      "Scene cuts were detected \u2014 tracking resets at each cut, so continuous footage analyzes better."
+    ],
+    "elapsed_s": 5.7,
+    "realtime_ratio": 0.6
+  },
+  {
+    "scenario": "partial_court",
+    "description": "Court only partially visible",
+    "size_mb": 1.01,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 84,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.66,
+    "tracks": 0,
+    "poses": 0,
+    "shuttle_pts": 184,
+    "rallies": 0,
+    "shots": 0,
+    "limitations": [
+      "no_players_detected",
+      "no_pose_landmarks_detected",
+      "no_rallies_segmented",
+      "no_court_transform_available_for_tactics"
+    ],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 4.2,
+    "realtime_ratio": 0.5
+  },
+  {
+    "scenario": "portrait_phone",
+    "description": "Portrait phone video 720x1280",
+    "size_mb": 1.22,
+    "resolution": "720x1280",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 84,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.69,
+    "tracks": 3,
+    "poses": 0,
+    "shuttle_pts": 135,
+    "rallies": 1,
+    "shots": 0,
+    "limitations": [
+      "no_pose_landmarks_detected"
+    ],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 4.8,
+    "realtime_ratio": 0.6
+  },
+  {
+    "scenario": "landscape_phone",
+    "description": "Landscape phone video 854x480",
+    "size_mb": 0.73,
+    "resolution": "854x480",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 78,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.72,
+    "tracks": 2,
+    "poses": 3,
+    "shuttle_pts": 172,
+    "rallies": 1,
+    "shots": 1,
+    "limitations": [],
+    "recommendations": [
+      "Record at 720p or higher \u2014 shuttle and racket detail is lost below that.",
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 3.1,
+    "realtime_ratio": 0.4
+  },
+  {
+    "scenario": "low_resolution",
+    "description": "426x240 - below shuttle threshold",
+    "size_mb": 0.51,
+    "resolution": "426x240",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 71,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.73,
+    "tracks": 0,
+    "poses": 0,
+    "shuttle_pts": 0,
+    "rallies": 0,
+    "shots": 0,
+    "limitations": [
+      "no_players_detected",
+      "no_pose_landmarks_detected",
+      "shuttle_not_reliably_detected",
+      "no_rallies_segmented",
+      "no_court_transform_available_for_tactics"
+    ],
+    "recommendations": [
+      "Record at 720p or higher \u2014 shuttle and racket detail is lost below that.",
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 0.5,
+    "realtime_ratio": 0.1
+  },
+  {
+    "scenario": "low_framerate",
+    "description": "8 fps source",
+    "size_mb": 0.3,
+    "resolution": "1280x720",
+    "fps": 8.0,
+    "duration_s": 7.5,
+    "quality_score": 79,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.71,
+    "tracks": 3,
+    "poses": 1,
+    "shuttle_pts": 53,
+    "rallies": 0,
+    "shots": 0,
+    "limitations": [
+      "low_frame_rate_source",
+      "no_rallies_segmented"
+    ],
+    "recommendations": [
+      "This frame rate is too low for fast shots \u2014 smashes can cross several meters between frames."
+    ],
+    "elapsed_s": 3.3,
+    "realtime_ratio": 0.4
+  },
+  {
+    "scenario": "multiple_people",
+    "description": "Players plus spectators in frame",
+    "size_mb": 1.27,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 84,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.71,
+    "tracks": 4,
+    "poses": 1,
+    "shuttle_pts": 151,
+    "rallies": 1,
+    "shots": 0,
+    "limitations": [],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 5.0,
+    "realtime_ratio": 0.6
+  },
+  {
+    "scenario": "occlusion",
+    "description": "Players repeatedly crossing/occluding",
+    "size_mb": 1.15,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 8.0,
+    "quality_score": 84,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "auto_hough_quad",
+    "court_conf": 0.71,
+    "tracks": 0,
+    "poses": 0,
+    "shuttle_pts": 213,
+    "rallies": 0,
+    "shots": 0,
+    "limitations": [
+      "no_players_detected",
+      "no_pose_landmarks_detected",
+      "no_rallies_segmented",
+      "no_court_transform_available_for_tactics"
+    ],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis."
+    ],
+    "elapsed_s": 4.0,
+    "realtime_ratio": 0.5
+  },
+  {
+    "scenario": "no_court",
+    "description": "Non-badminton footage",
+    "size_mb": 0.25,
+    "resolution": "1280x720",
+    "fps": 30.0,
+    "duration_s": 6.0,
+    "quality_score": 53,
+    "usable": true,
+    "camera_cuts": 0,
+    "court_method": "fallback_full_frame",
+    "court_conf": 0.15,
+    "tracks": 0,
+    "poses": 0,
+    "shuttle_pts": 170,
+    "rallies": 0,
+    "shots": 0,
+    "limitations": [
+      "auto_detection_failed",
+      "needs_user_calibration",
+      "no_players_detected",
+      "no_pose_landmarks_detected",
+      "no_rallies_segmented",
+      "no_court_transform_available_for_tactics"
+    ],
+    "recommendations": [
+      "Record at 60 fps when possible for better shot-timing and shuttle analysis.",
+      "The recording is dark \u2014 more court lighting will noticeably improve tracking."
+    ],
+    "elapsed_s": 3.0,
+    "realtime_ratio": 0.5
+  }
+]
