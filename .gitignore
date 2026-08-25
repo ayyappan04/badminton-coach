@@ -20,3 +20,10 @@ frontend/dist/
 # so files here cannot be pushed. The intended CI workflow is version-
 # controlled at docs/ci/ci.yml — see docs/ci/README.md to activate it.
 .github/workflows/
+
+# Real test footage is fetched on demand, never committed.
+# See backend/tests/fetch_real_footage.py and
+# docs/evidence/real-footage-attribution.md
+backend/tests/footage/
+*.webm
+*.ogv
