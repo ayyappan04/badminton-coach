@@ -37,11 +37,16 @@ backend question in H3.
 
 ### H2 · Fix player tracking through occlusion — **L**
 
-**Problem — measured.** The classical HOG detector produces **zero tracks**
-when players cross (`occlusion` scenario), on partially visible courts, and
-below ~480p. Since every downstream stage — pose, shots, biomechanics,
-tactics, coaching — is keyed to tracks, this failure silently empties the
-entire analysis. It is the single largest accuracy defect in the product.
+**Problem — measured twice.** On synthetic footage the classical HOG detector
+produces **zero tracks** when players cross, on partially visible courts, and
+below ~480p. On *real* footage the failure mode is the opposite and worse:
+**11–65 tracks for videos containing 2–4 players** (`docs/REAL_FOOTAGE_RESULTS.md`)
+— identities break constantly and are re-issued, 5–20× over-segmentation.
+
+Since every downstream stage — pose, shots, biomechanics, tactics, coaching —
+is keyed to tracks, this both empties analyses *and* inflates them. It is the
+root cause of H3's impossible shot rates, and the single largest accuracy
+defect in the product.
 
 **Fix.** Replace HOG + IOU with a modern detector plus a real tracker:
 YOLOv8-m or RT-DETR for detection, ByteTrack or BoT-SORT for association with
@@ -50,8 +55,13 @@ already exposes the right seam — `track_players()` returns `List[Track]`, so
 the swap is contained.
 
 **Done when.** The occlusion scenario yields ≥2 persistent tracks, doubles
-footage yields 4, and `track_persistence` in the real-footage matrix exceeds
-0.8. Add a regression test asserting a track-count floor per scenario.
+footage yields 4, and — the metric that actually matters — **track count is
+within ~1.5× the number of players present** on every real-footage clip. Add a
+regression test asserting both a floor and a *ceiling* on track count.
+
+**Note:** the current `track_persistence` metric (0.58–0.97, looks healthy) is
+misleading — it measures the top four tracks against the longest and is blind
+to 60 spurious tracks alongside them. Replace it as part of this work.
 
 **Cost note.** Adds PyTorch (~2 GB) and effectively requires a GPU for
 reasonable throughput. Budget for that before starting.
@@ -60,10 +70,20 @@ reasonable throughput. Budget for that before starting.
 
 ### H3 · Validate and then train stroke recognition — **XL**
 
-**Problem.** Shot classification is a hand-written heuristic over wrist speed
-and contact height. It is unvalidated against ground truth and produced almost
-no shots across the synthetic matrix. The product's headline claim — technique
-coaching — rests on it.
+**Problem — now measured, and worse than assumed.** Shot classification is a
+hand-written heuristic over wrist-speed peaks. On real footage it reports up to
+**131 shots per minute** (`championship_point`), which is physically impossible:
+a rally cannot exceed roughly one shot per second. The cause is mechanical —
+the detector fires per *track*, and H2's fragmentation means one physical swing
+is counted many times.
+
+**Shot counts are therefore currently unusable as statistics**, and so is
+everything derived from them: shot mix, pattern mining, intent ratios, and the
+coaching insights that cite them. The product's headline claim rests on this.
+
+H2 must land first — much of this error may simply disappear once tracks are
+stable, which is worth measuring before committing to the expensive training
+work in steps 2–3.
 
 **Sequence.**
 1. **Validate first (M).** Use the real-footage harness and the BWF manual
@@ -139,6 +159,19 @@ zero poses, and zero shuttle points. Portrait orientation scored 84 and was
 not flagged at all. Weight resolution more heavily, add an aspect-ratio check,
 and cap the score when downstream stages are known to be unavailable.
 
+### M4b · Make shot counts comparable across sample rates — **S**
+The memory fix reduces the sample rate for long videos, which silently changes
+shot counts: `elite_broadcast` reported 2.4 shots/min at 0.5 fps versus 131 on
+a short clip at full rate. **Cross-match comparison is invalid between videos
+analysed at different rates.** Either normalise counts by effective sample
+rate, or refuse to compare matches whose rates differ and say why.
+
+### M4c · Investigate 6.38× realtime worst case — **S**
+Latency ranged 0.13×–6.38× realtime across real clips. A 30-minute upload at
+the worst rate is over three hours of CPU. Profile the hot stage (likely pose
+on many fragmented tracks — another H2 dependency) and set user expectations
+in the UI.
+
 ### M5 · Malware scanning on upload — **S**
 Files are never executed and are only opened by OpenCV, but ClamAV in the
 ingest path is standard practice before accepting untrusted public uploads.
@@ -184,10 +217,10 @@ H1 (runtime)  ──►  H5 (CI)  ──►  H2 (tracking)  ──►  H3 step 1
 
 **Why this order.** H1 unblocks dependency hygiene and may constrain H2's model
 choice, so it goes first. H5 is hours of work and makes every later change
-safer. H2 is the largest measured accuracy defect and gates everything
-downstream. H3's *validation* step is cheap and tells you whether the
-expensive training work is even the right investment — do not skip straight to
-collecting data.
+safer. H2 is the largest measured accuracy defect *and* the likely root cause
+of H3's impossible shot rates — fixing tracking may resolve much of the shot
+problem for free, so measure again after H2 before funding H3's dataset work.
+Do not skip straight to collecting training data.
 
 ---
 

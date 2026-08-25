@@ -129,10 +129,25 @@ frame rate, orientation, occlusion, and non-badminton footage.
 | Player tracking | **0 tracks** under occlusion, partial court, and low resolution |
 | Latency | 0.1×–0.7× realtime on CPU |
 
-### Real footage matrix — `docs/evidence/real-footage-matrix.json`
+### Real footage matrix — [full results](docs/REAL_FOOTAGE_RESULTS.md)
 
-Openly-licensed real badminton (CC0 / public domain / CC BY / CC BY-SA) from
-Wikimedia Commons, including elite tour-level broadcast footage. Fetch and run:
+13.6 minutes of openly-licensed real badminton (CC0 / public domain / CC BY /
+CC BY-SA) from Wikimedia Commons — 320×240 school play up to 1920×1080 elite
+tour broadcast.
+
+| Signal | Result |
+|---|---|
+| **Pose estimation** | **76–88% coverage**, 0.72–0.85 confidence — *newly validated*, was unmeasurable on synthetic clips |
+| **Court detection** | Best on broadcast (**0.89**); falls back honestly on unusable footage |
+| **Player tracking** | **11–65 tracks for 2–4 players** — 5–20× identity fragmentation |
+| **Stroke recognition** | **131 shots/min** on one clip — physically impossible; counts unusable |
+| **Shuttle detection** | 13,205 "points" on an 8-minute clip — noise |
+| **Limitation flags** | Correct on every clip — nothing silently invented |
+
+**Testing on long real footage also found two crashes** that synthetic clips
+(all ≤12 s) could never expose: the shuttle detector and the pipeline each
+materialised every frame in memory — ~94 GB and ~31 GB respectively for an
+8.4-minute 1080p match. Both fixed; memory is now bounded at ~1.3 GB.
 
 ```bash
 cd backend
@@ -157,11 +172,18 @@ source-agnostic — drop files in and add them to
 
 | Capability | Status |
 |---|---|
-| Stroke recognition accuracy | **Weak / unvalidated** — rule-based heuristic, not a trained classifier |
-| Shuttle tracking | **Experimental** — emitted 170 false "shuttle points" on non-badminton footage; confidence capped at 0.5 |
-| Tracking through occlusion | **Fails** — classical HOG detector, replacement planned |
+| Stroke recognition | **Not fit for purpose** — measured at up to 131 shots/min, which is physically impossible. Counts and everything derived from them (shot mix, patterns) are unreliable |
+| Player tracking | **Fails** — 5–20× identity fragmentation on real footage; 0 tracks under synthetic occlusion |
+| Shuttle tracking | **Experimental** — 13,205 false points on an 8-minute clip; confidence capped at 0.5 |
+| Cross-match comparison | **Invalid between different sample rates** — long videos are analysed at a lower fps, which changes shot counts |
 | Racket detection | **Not implemented** — the "racket path" overlay is a wrist estimate |
 | Rally outcomes | **Deliberately not claimed** |
+
+**Overall confidence: 2.5/5.** The platform — auth, isolation, upload safety,
+quality gating, and its refusal to overclaim — is solid, and pose estimation is
+genuinely usable. The tracking and stroke layers are not yet trustworthy enough
+for the coaching claims built on them. Full scoring:
+[docs/REAL_FOOTAGE_RESULTS.md](docs/REAL_FOOTAGE_RESULTS.md).
 
 `docs/V2_DESIGN.md §18` classifies every feature as reliable-now, needs-model-
 training, needs-calibration, or experimental.
@@ -316,6 +338,7 @@ Everything is environment-driven; see **[.env.example](.env.example)**.
 |---|---|
 | [SECURITY.md](docs/SECURITY.md) | Security model, verification, limitations |
 | [VALIDATION_AND_SECURITY_REPORT.md](docs/VALIDATION_AND_SECURITY_REPORT.md) | Full review: findings, evidence, next steps |
+| [REAL_FOOTAGE_RESULTS.md](docs/REAL_FOOTAGE_RESULTS.md) | Measured results on real badminton footage, with revised scores |
 | [BWF_MANUAL_TEST_PROTOCOL.md](docs/BWF_MANUAL_TEST_PROTOCOL.md) | Lawful observational testing of broadcast footage |
 | [V2_DESIGN.md](docs/V2_DESIGN.md) | Requirements, CV pipeline, buildability classification |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, stack, data flow |
