@@ -67,7 +67,28 @@ def run_pipeline(video_path: str, progress_cb: Optional[Callable[[int, str], Non
         )
 
     report(10, "extracting_frames")
-    frames = list(frame_extraction.iter_frames(video_path, FRAME_SAMPLE_FPS))
+    # Frames are held in memory for the detection stages, so the sample rate is
+    # reduced for long/high-resolution videos to stay inside the memory budget.
+    # Pixel coordinates are preserved (frames are never rescaled) because the
+    # court homography and overlay manifest are expressed in frame pixels.
+    sample_fps = FRAME_SAMPLE_FPS
+    bytes_per_frame = max(1, meta.width * meta.height * 3)
+    frame_budget = max(60, config.MAX_ANALYSIS_FRAME_BYTES // bytes_per_frame)
+    if meta.duration_s > 0 and meta.duration_s * FRAME_SAMPLE_FPS > frame_budget:
+        sample_fps = max(config.MIN_ANALYSIS_FPS, frame_budget / meta.duration_s)
+        limitations.append("sparse_sampling_long_video")
+
+    # Hard guard: even at the floor sample rate a very long high-resolution
+    # video can exceed the budget, so stop reading once it is reached rather
+    # than letting the worker be OOM-killed.
+    frames = []
+    for frame in frame_extraction.iter_frames(video_path, sample_fps):
+        frames.append(frame)
+        if len(frames) >= frame_budget:
+            if "sparse_sampling_long_video" not in limitations:
+                limitations.append("sparse_sampling_long_video")
+            limitations.append("analysis_truncated_memory_budget")
+            break
 
     report(20, "detecting_court")
     calibration = court_detection.detect_court(frames)
@@ -77,7 +98,7 @@ def run_pipeline(video_path: str, progress_cb: Optional[Callable[[int, str], Non
     tracks = player_tracking.track_players(
         frames,
         camera_cut_timestamps=quality["camera_cuts"],
-        fps_sampled=FRAME_SAMPLE_FPS,
+        fps_sampled=sample_fps,
     )
     if not tracks:
         limitations.append("no_players_detected")
@@ -95,7 +116,7 @@ def run_pipeline(video_path: str, progress_cb: Optional[Callable[[int, str], Non
         limitations.append("shuttle_not_reliably_detected")
 
     report(70, "segmenting_rallies")
-    rallies = rally_segmentation.segment_rallies(tracks, FRAME_SAMPLE_FPS)
+    rallies = rally_segmentation.segment_rallies(tracks, sample_fps)
     if not rallies:
         limitations.append("no_rallies_segmented")
 
@@ -129,7 +150,7 @@ def run_pipeline(video_path: str, progress_cb: Optional[Callable[[int, str], Non
             for track in tracks:
                 ts_list = shot_timestamps_by_track.get(track.track_id, [])
                 tactics_result[str(track.track_id)]["recovery"] = tactics.estimate_recovery_times(
-                    track, calibration.homography, ts_list, FRAME_SAMPLE_FPS
+                    track, calibration.homography, ts_list, sample_fps
                 )
     else:
         limitations.append("no_court_transform_available_for_tactics")

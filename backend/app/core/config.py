@@ -94,3 +94,11 @@ POSE_SAMPLE_FPS = 15           # fps used for pose + shuttle (motion-sensitive s
 MAX_VIDEO_DURATION_S = 60 * 30
 MIN_RESOLUTION_FOR_SHUTTLE = (640, 360)
 PROCESSING_TIMEOUT_S = int(os.environ.get("PROCESSING_TIMEOUT_S", 900))
+
+# The detection stages hold their sampled frames in memory at full
+# resolution. Without a budget, memory scales with duration x resolution:
+# a 8.4-minute 1080p match at 10 fps needs ~31 GB and OOM-kills the worker.
+# When a video would exceed this budget the effective sample rate is
+# reduced and the result is flagged `sparse_sampling_long_video`.
+MAX_ANALYSIS_FRAME_BYTES = int(os.environ.get("MAX_ANALYSIS_FRAME_MB", 1200)) * 1024 * 1024
+MIN_ANALYSIS_FPS = 0.5   # hard floor; the byte budget wins above this

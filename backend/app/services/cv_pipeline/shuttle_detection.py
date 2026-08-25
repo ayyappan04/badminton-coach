@@ -23,18 +23,21 @@ MAX_ASSOCIATION_DIST_PX = 140  # per-frame-pair search radius; scales with resol
 
 def detect_shuttle_track(frames_native, min_resolution: Tuple[int, int] = (640, 360)) -> List[ShuttlePoint]:
     """`frames_native` is an iterator/list of (frame_index, timestamp_s, image)."""
-    frames_native = list(frames_native)
-    if not frames_native:
-        return []
-
-    h, w = frames_native[0][2].shape[:2]
-    if w < min_resolution[0] or h < min_resolution[1]:
-        return []  # resolution too low for a small fast object to be reliably resolved
-
-    bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=30, varThreshold=25, detectShadows=False)
-
+    # Streamed deliberately: materialising every native frame costs
+    # duration x fps x width x height x 3 bytes — ~94 GB for an 8-minute 1080p
+    # match, which OOM-kills the worker. Only the per-frame blob centroids are
+    # retained, which are a few hundred bytes per frame.
+    bg_subtractor = None
     candidates_by_frame = []
+
     for frame_index, timestamp_s, image in frames_native:
+        if bg_subtractor is None:
+            h, w = image.shape[:2]
+            if w < min_resolution[0] or h < min_resolution[1]:
+                return []  # too low-res for a small fast object to be resolved
+            bg_subtractor = cv2.createBackgroundSubtractorMOG2(
+                history=30, varThreshold=25, detectShadows=False
+            )
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         fg_mask = bg_subtractor.apply(gray)
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
@@ -50,6 +53,9 @@ def detect_shuttle_track(frames_native, min_resolution: Tuple[int, int] = (640, 
                 cx, cy = m["m10"] / m["m00"], m["m01"] / m["m00"]
                 blobs.append((cx, cy, area))
         candidates_by_frame.append((frame_index, timestamp_s, blobs))
+
+    if not candidates_by_frame:
+        return []
 
     # Greedy nearest-neighbor association across consecutive frames to build a
     # single continuous track — real shuttle tracking would use multiple
