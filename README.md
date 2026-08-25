@@ -72,37 +72,48 @@ python -m app.seed_content            # drills + 24 technique references
 
 ### 1 · Coach (landing)
 
-An animated coach that greets you, names your current improvement focus, and
-answers questions about **your** matches — "why am I losing points at the
-net?", "what should I train this week?". Answers are retrieval over your own
-stored analysis with deep links to the exact video moment.
+Opens on a greeting, your current improvement focus with the numbers behind
+it, and one obvious next action. Below that, the coach answers questions about
+**your** matches — "why am I losing points at the net?", "what should I train
+this week?" — as retrieval over your own stored analysis, with deep links to
+the exact video moment.
 
 There is **no LLM** in this path. It is intent-routed retrieval over your
 database rows with fixed templates, which means it cannot hallucinate a
 statistic. Injury and pain questions are gated *before* routing: the coach
 declines to diagnose and refers you to a physiotherapist.
 
-### 2 · Dashboard
+### 2 · Matches
 
-| Area | What you get |
+The analysis workspace. A match library on the left, and the selected match on
+the right: video with toggleable overlays, an analytical hero, then five tabs
+so you aren't scrolling through ten sections to understand a session.
+
+**Match performance hero** — overall score (the mean of the dimensions actually
+measured, labelled as such), the three coaching areas, analysis confidence,
+tracked shots, rallies and recording quality. Below 50% confidence the panel
+says so rather than presenting estimates as measurements.
+
+| Tab | What you get |
 |---|---|
-| **Overview strip** | Development score, improvement focus, main strength, trend, next drill, coach message |
-| **Recording quality** | 0–100 score with specific fixes ("record at 60 fps", "raise the camera") |
-| **Video + overlays** | Skeleton, court, shuttle trail, tracked boxes — each toggleable |
-| **Rally & phase timeline** | Serve / return / attack / neutral / defence / ending, colour-coded, click to seek |
-| **Coaching insights** | Observation → impact → correction → drill, each with confidence and limitations |
-| **Match analytics** | Rally stats, serve patterns, shot mix, repeated-pattern mining, court dominance, fatigue indicator, pressure zones |
-| **Doubles rotation** | Formation split, rotation timing, missed rotations, partner spacing, open-middle detection |
-| **Technique scorecards** | 10 dimensions, each showing the proxy it was measured by |
-| **Comparison Studio** | Your clip beside an animated reference — slow motion, frame stepping, phase checkpoints, configurable by level / handedness / context |
-| **Coach review** | Invite a real coach to one match; their notes appear beside the AI's |
-| **Compare matches** | Side-by-side deltas between any two of your matches |
+| **Overview** | Recording quality, rally & phase timeline (click any segment to seek), coaching insights with evidence links, strategy recommendations, coach review |
+| **Movement** | Footwork, recovery speed and movement efficiency with the proxy each was measured by · court dominance · movement-speed trend · court coverage heatmap |
+| **Technique** | Racket preparation, contact height, shot timing, body alignment, consistency · balance & stability · Comparison Studio launcher |
+| **Tactics** | Repeated shot patterns and predictability · serve & return · opponent pressure zones · doubles rotation |
+| **Shots** | Rally shape · shot mix table · every tracked shot with timestamp, contact, intent and confidence — select a row to jump the video there |
 
-### 3 · Profile
+Plus **Compare matches** for side-by-side deltas, and the **Comparison Studio**:
+your clip beside an animated reference with slow motion, frame stepping and
+per-phase checkpoints, configurable by level, handedness and tactical context.
 
-Attribute radar across 9 dimensions, per-attribute breakdown, play-style
-classification **with the evidence behind it**, strengths and weaknesses,
-progress trend per dimension, and an adaptive training plan.
+### 3 · Progress
+
+Development score with a sparkline across sessions, current focus and analysis
+confidence. Play-style classification **with the evidence behind it**. The
+attribute radar sits beside a numeric breakdown — every dimension with its
+value and its change since the previous session, so nobody has to estimate a
+number from a polygon. Then strengths, focus areas, a per-dimension trend
+chart, and the training plan.
 
 ### 4 · Community
 
@@ -194,7 +205,7 @@ training, needs-calibration, or experimental.
 
 ```
 ┌──────────────── Frontend (React 19 + TS + Vite + Tailwind 4) ─────────────────┐
-│  Coach  ·  Dashboard  ·  Profile  ·  Community  ·  Account flows              │
+│  Coach  ·  Matches  ·  Progress  ·  Community  ·  Account flows               │
 └───────────────────────────────────┬───────────────────────────────────────────┘
                                     │ REST + Bearer JWT
 ┌───────────────────────────────────▼───────────────────────────────────────────┐
@@ -225,13 +236,44 @@ backend/app/
     profiling/     player_profile_builder
   worker.py
 backend/tests/   98 tests + live smoke + two video matrices
-frontend/src/    4 pages · 27 components
+frontend/src/
+  ui/            design tokens + primitives (Surface, Metric, Delta,
+                 Confidence, DataTable, SegmentedControl, …)
+  pages/         Welcome · Dashboard (Matches) · Profile (Progress) ·
+                 Community · AccountFlows
+  components/
+    match/       MatchSummary · MatchTabs · matchData
+    …            26 feature components
 docs/            design, security, evidence
 ```
 
 **Stack:** FastAPI · SQLAlchemy 2 · SQLite (dev) / Postgres (prod-ready) ·
 PyJWT · passlib/bcrypt · OpenCV 4.10 · MediaPipe 0.10 · React 19 · Vite ·
 Tailwind 4 · Recharts.
+
+---
+
+## Interface
+
+Dense information, calm presentation. The design system lives in
+`frontend/src/ui`: semantic CSS tokens (surfaces, text, separators, accent,
+semantic colours, viz palette, radii, motion) and a small set of primitives
+that every screen composes from. No component reaches for a raw hex value.
+
+Three rules do most of the work:
+
+- **One analytical concept = one surface.** Related metrics sit together in a
+  grouped panel rather than each getting its own card.
+- **Direction is not sentiment.** A falling recovery time is an improvement; a
+  rising error count is not. `Delta` takes both separately, and screen readers
+  get words rather than a bare arrow.
+- **Confidence is a metric, not a disclaimer.** Below 45% the value it
+  accompanies is visually de-emphasised, and unmeasurable data renders as `—`
+  with the reason attached — never a fabricated zero.
+
+Numbers use tabular figures so columns align. Mobile gets bottom navigation
+and stacked tables rather than a squeezed desktop layout, with no analytical
+detail removed.
 
 ---
 
