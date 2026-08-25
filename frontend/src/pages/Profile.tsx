@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { PlayerProfile } from "../types";
 import { RadarChartPanel, DIMENSION_LABELS } from "../components/RadarChartPanel";
 import { TrainingPlanPanel } from "../components/TrainingPlanPanel";
+import {
+  Button, Confidence, Delta, EmptyState, Metric, Page, PageHeader, ScoreBar,
+  SectionHeader, SegmentedControl, Skeleton, Sparkline, Surface, formatScore, titleCase,
+} from "../ui";
 
 interface HistorySnapshot {
   snapshot_at: string;
@@ -13,235 +17,310 @@ interface HistorySnapshot {
   video_id: string;
 }
 
+function mean(values: number[]): number | null {
+  if (!values.length) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function overallOf(scores: Record<string, { score: number | null }>): number | null {
+  return mean(Object.values(scores).map((v) => v.score).filter((s): s is number => s !== null));
+}
+
 export function Profile() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [trendDim, setTrendDim] = useState<string>("overall");
 
   useEffect(() => {
-    api.get<PlayerProfile>("/profile").then(setProfile).catch(() => {});
-    api.get<HistorySnapshot[]>("/profile/history").then(setHistory).catch(() => {});
+    Promise.allSettled([
+      api.get<PlayerProfile>("/profile").then(setProfile),
+      api.get<HistorySnapshot[]>("/profile/history").then(setHistory),
+    ]).finally(() => setLoading(false));
   }, []);
 
-  if (!profile) {
-    return <div className="max-w-5xl mx-auto px-4 py-12 text-sm text-[var(--color-ink-soft)]">Loading profile...</div>;
+  const dimensionKeys = useMemo(
+    () => (profile ? Object.keys(profile.radar_scores) : []),
+    [profile],
+  );
+
+  const trendData = useMemo(
+    () =>
+      history.map((snap, i) => ({
+        session: `S${i + 1}`,
+        value:
+          trendDim === "overall"
+            ? overallOf(snap.radar_scores)
+            : snap.radar_scores[trendDim]?.score ?? null,
+      })),
+    [history, trendDim],
+  );
+
+  if (loading) {
+    return (
+      <Page>
+        <Skeleton className="w-56 mb-3" height={30} />
+        <Skeleton className="w-80 mb-8" height={14} />
+        <Surface>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i}>
+                <Skeleton className="w-20 mb-2" height={10} />
+                <Skeleton className="w-16" height={32} />
+              </div>
+            ))}
+          </div>
+        </Surface>
+      </Page>
+    );
   }
 
-  const hasData = profile.matches_analyzed_count > 0;
+  const hasData = (profile?.matches_analyzed_count ?? 0) > 0;
+
+  if (!profile || !hasData) {
+    return (
+      <Page>
+        <PageHeader title="Progress" description="Your development across analyzed sessions." />
+        <Surface>
+          <EmptyState
+            title="No analyzed sessions yet"
+            description="Your attribute profile, trends and training plan build automatically as you upload matches."
+            action={<Button variant="primary" onClick={() => navigate("/dashboard?upload=1")}>Upload your first match</Button>}
+          />
+        </Surface>
+      </Page>
+    );
+  }
+
+  const overall = overallOf(profile.radar_scores);
+  const firstOverall = history.length ? overallOf(history[0].radar_scores) : null;
+  const sinceStart = overall !== null && firstOverall !== null ? Math.round((overall - firstOverall) * 10) / 10 : null;
+  const avgConfidence = mean(Object.values(profile.radar_scores).map((v) => v.confidence));
+  const focus = profile.weaknesses[0] ?? null;
+
+  const overallSeries = history
+    .map((s) => overallOf(s.radar_scores))
+    .filter((v): v is number => v !== null);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-      {/* Header */}
-      <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-6 flex flex-wrap items-center gap-5">
-        <span className="w-16 h-16 rounded-full bg-[var(--color-accent)] text-white flex items-center justify-center text-2xl font-semibold shrink-0">
-          {user?.display_name?.charAt(0).toUpperCase() ?? "?"}
-        </span>
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold">{user?.display_name}</h1>
-          <p className="text-sm text-[var(--color-ink-soft)]">
-            {hasData
-              ? `${profile.matches_analyzed_count} match${profile.matches_analyzed_count === 1 ? "" : "es"} analyzed`
-              : "No matches analyzed yet"}
-          </p>
-          {profile.play_style_labels.length > 0 && (
-            <div className="flex gap-2 mt-2 flex-wrap">
-              {profile.play_style_labels.map((l) => (
-                <span key={l.label} className="text-xs bg-[var(--color-accent-soft)] text-[var(--color-accent)] px-2.5 py-1 rounded-full">
-                  {l.label} · {Math.round(l.confidence * 100)}%
-                </span>
-              ))}
+    <Page>
+      <PageHeader
+        title="Progress"
+        description={`${profile.matches_analyzed_count} ${profile.matches_analyzed_count === 1 ? "session" : "sessions"} analyzed for ${user?.display_name ?? "you"}.`}
+      />
+
+      {/* Hero: where the player stands right now */}
+      <Surface className="mb-5">
+        <div className="flex flex-wrap items-start gap-x-10 gap-y-6">
+          <Metric
+            label="Overall development"
+            value={formatScore(overall)}
+            unit="/ 100"
+            size="hero"
+            delta={sinceStart !== null ? <Delta value={sinceStart} suffix="since first session" /> : undefined}
+          />
+          {overallSeries.length >= 2 && (
+            <div className="pt-4">
+              <Sparkline points={overallSeries} width={110} height={30} />
+              <p className="text-[11px] mt-1" style={{ color: "var(--text-tertiary)" }}>
+                {overallSeries.length} sessions
+              </p>
             </div>
           )}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4 flex-1 min-w-[220px]">
+            <Metric label="Current focus" value={<span className="text-[18px]">{focus ? titleCase(focus) : "—"}</span>} size="lg" />
+            <Metric
+              label="Analysis confidence"
+              value={avgConfidence !== null ? `${Math.round(avgConfidence * 100)}%` : "—"}
+              size="lg"
+            />
+          </div>
         </div>
-      </div>
 
-      {!hasData ? (
-        <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-8 text-center">
-          <p className="text-[var(--color-ink-soft)] mb-4">
-            Your player profile builds automatically as you upload and analyze matches — attribute
-            scores, play-style classification, strengths, and a personalized training plan.
-          </p>
-          <button
-            onClick={() => navigate("/dashboard?upload=1")}
-            className="bg-[var(--color-accent)] text-white px-5 py-2.5 rounded-md font-medium hover:bg-[var(--color-accent-dark)]"
-          >
-            Upload your first match
-          </button>
-        </div>
-      ) : (
-        <>
-          {/* Spider chart + attribute stats */}
-          <div className="grid lg:grid-cols-2 gap-6">
-            <section className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
-              <h2 className="font-semibold mb-2">Attribute radar</h2>
-              <RadarChartPanel radarScores={profile.radar_scores} height={340} />
-            </section>
+        {profile.play_style_labels.length > 0 && (
+          <div className="mt-5 pt-4 border-t" style={{ borderColor: "var(--separator)" }}>
+            <p className="text-[11px] font-medium uppercase tracking-wider mb-2" style={{ color: "var(--text-tertiary)" }}>
+              Play style
+            </p>
+            <div className="space-y-2">
+              {profile.play_style_labels.map((l) => (
+                <div key={l.label}>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[14px] font-medium" style={{ color: "var(--text-primary)" }}>
+                      {l.label}
+                    </span>
+                    <Confidence value={l.confidence} showLabel />
+                  </div>
+                  <p className="text-[12.5px] leading-snug mt-0.5" style={{ color: "var(--text-tertiary)" }}>
+                    {l.evidence}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Surface>
 
-            <section className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
-              <h2 className="font-semibold mb-4">Attribute breakdown</h2>
-              <div className="space-y-3">
-                {Object.entries(profile.radar_scores).map(([key, entry]) => (
-                  <div key={key}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-[var(--color-ink-soft)]">{DIMENSION_LABELS[key] || key}</span>
-                      <span className="font-medium">
-                        {entry.score !== null ? Math.round(entry.score) : "—"}
-                        <span className="text-[var(--color-ink-soft)] font-normal"> / 100</span>
+      {/* Radar + numeric breakdown side by side */}
+      <div className="grid lg:grid-cols-2 gap-5 items-start mb-5">
+        <Surface>
+          <SectionHeader title="Attribute profile" />
+          <RadarChartPanel radarScores={profile.radar_scores} />
+        </Surface>
+
+        <Surface>
+          <SectionHeader title="Attribute breakdown" description="Every dimension, with its measured value." />
+          <div className="space-y-3">
+            {Object.entries(profile.radar_scores).map(([key, entry]) => {
+              const prev =
+                history.length >= 2 ? history[history.length - 2].radar_scores[key]?.score ?? null : null;
+              const change = entry.score !== null && prev !== null ? Math.round((entry.score - prev) * 10) / 10 : null;
+              const low = entry.confidence > 0 && entry.confidence < 0.45;
+              return (
+                <div key={key} style={low ? { opacity: 0.62 } : undefined}>
+                  <div className="flex items-baseline justify-between gap-3 mb-1.5">
+                    <span className="text-[14px]" style={{ color: "var(--text-secondary)" }}>
+                      {DIMENSION_LABELS[key] ?? titleCase(key)}
+                    </span>
+                    <span className="flex items-baseline gap-2.5">
+                      {change !== null && change !== 0 && <Delta value={change} decimals={1} />}
+                      <span className="tnum text-[16px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                        {entry.score === null ? "—" : Math.round(entry.score)}
                       </span>
-                    </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-[var(--color-accent-dark)] to-[var(--color-accent)]"
-                        style={{ width: `${entry.score ?? 0}%` }}
-                      />
-                    </div>
+                    </span>
                   </div>
-                ))}
-              </div>
-              <p className="text-xs text-[var(--color-ink-soft)] mt-4">
-                Scores are heuristic composites of video-derived signals, not validated performance
-                metrics — treat them as directional and expect them to stabilize over more matches.
-              </p>
-            </section>
+                  <ScoreBar value={entry.score} />
+                </div>
+              );
+            })}
           </div>
-
-          {/* Strengths & weaknesses */}
-          <div className="grid sm:grid-cols-2 gap-6">
-            <section className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
-              <h2 className="font-semibold mb-3 text-[var(--color-good)]">Strengths</h2>
-              {profile.strengths.length > 0 ? (
-                <ul className="space-y-2">
-                  {profile.strengths.map((s) => (
-                    <li key={s} className="text-sm flex items-center gap-2 capitalize">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-good)] shrink-0" />
-                      {s}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-[var(--color-ink-soft)]">No clear standout strengths yet — more matches will sharpen this.</p>
-              )}
-            </section>
-            <section className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
-              <h2 className="font-semibold mb-3 text-[var(--color-warn)]">Areas to improve</h2>
-              {profile.weaknesses.length > 0 ? (
-                <ul className="space-y-2">
-                  {profile.weaknesses.map((w) => (
-                    <li key={w} className="text-sm flex items-center gap-2 capitalize">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warn)] shrink-0" />
-                      {w}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-[var(--color-ink-soft)]">Nothing flagged yet.</p>
-              )}
-            </section>
-          </div>
-
-          {/* Play style evidence */}
-          {profile.play_style_labels.length > 0 && (
-            <section className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
-              <h2 className="font-semibold mb-3">Play style — and the evidence behind it</h2>
-              <div className="space-y-3">
-                {profile.play_style_labels.map((l) => (
-                  <div key={l.label} className="border border-[var(--color-border)] rounded-lg p-3 bg-[var(--color-bg-raised)]">
-                    <div className="flex justify-between items-baseline">
-                      <span className="font-medium text-sm">{l.label}</span>
-                      <span className="text-xs text-[var(--color-ink-soft)]">{Math.round(l.confidence * 100)}% confidence</span>
-                    </div>
-                    <p className="text-xs text-[var(--color-ink-soft)] mt-1">{l.evidence}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Progress over time */}
-          {history.length >= 2 && (
-            <section className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
-              <h2 className="font-semibold mb-3">Progress over time</h2>
-              <ProgressChart history={history} />
-            </section>
-          )}
-
-          {/* Training plan */}
-          <section className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
-            <h2 className="font-semibold mb-3">Training plan</h2>
-            <TrainingPlanPanel profile={profile} />
-          </section>
-        </>
-      )}
-    </div>
-  );
-}
-
-function ProgressChart({ history }: { history: HistorySnapshot[] }) {
-  const [dimension, setDimension] = useState<string>("average");
-
-  const dimensions = Object.keys(history[history.length - 1]?.radar_scores ?? {});
-
-  const data = history.map((snap, i) => {
-    let value: number;
-    if (dimension === "average") {
-      const scores = Object.values(snap.radar_scores)
-        .map((v) => v.score)
-        .filter((s): s is number => s !== null);
-      value = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-    } else {
-      value = snap.radar_scores[dimension]?.score ?? 0;
-    }
-    return { session: `Session ${i + 1}`, value: Math.round(value * 10) / 10 };
-  });
-
-  return (
-    <>
-      <div className="flex gap-1.5 flex-wrap mb-3">
-        <TrendChip label="Overall" active={dimension === "average"} onClick={() => setDimension("average")} />
-        {dimensions.map((d) => (
-          <TrendChip
-            key={d}
-            label={DIMENSION_LABELS[d] || d}
-            active={dimension === d}
-            onClick={() => setDimension(d)}
-          />
-        ))}
+          <p className="text-[11.5px] mt-4 leading-snug" style={{ color: "var(--text-tertiary)" }}>
+            Scores are heuristic composites of video-derived signals, not validated performance
+            metrics — read them as directional and expect them to settle as sessions accumulate.
+          </p>
+        </Surface>
       </div>
-      <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
-          <XAxis dataKey="session" tick={{ fontSize: 11, fill: "var(--color-ink-soft)" }} stroke="var(--color-border-strong)" />
-          <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "var(--color-ink-soft)" }} stroke="var(--color-border-strong)" />
-          <Tooltip
-            contentStyle={{
-              background: "var(--color-bg-raised)",
-              border: "1px solid var(--color-border-strong)",
-              borderRadius: 8,
-              color: "var(--color-ink)",
-              fontSize: 12,
-            }}
-          />
-          <Line type="monotone" dataKey="value" stroke="var(--color-accent)" strokeWidth={2} dot={{ fill: "var(--color-accent)" }} isAnimationActive={false} />
-        </LineChart>
-      </ResponsiveContainer>
-      <p className="text-xs text-[var(--color-ink-soft)] mt-1">
-        {dimension === "average" ? "Average attribute score" : `${DIMENSION_LABELS[dimension] || dimension} score`} after each analyzed session — directions matter more than exact values.
-      </p>
-    </>
-  );
-}
 
-function TrendChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-[10px] px-2 py-1 rounded-full border transition ${
-        active
-          ? "bg-[var(--color-accent)] text-white border-[var(--color-accent)]"
-          : "border-[var(--color-border)] text-[var(--color-ink-soft)] hover:border-[var(--color-accent)]"
-      }`}
-    >
-      {label}
-    </button>
+      {/* Strengths and focus areas */}
+      <div className="grid sm:grid-cols-2 gap-5 mb-5">
+        <Surface>
+          <SectionHeader title="Strengths" />
+          {profile.strengths.length ? (
+            <ul className="space-y-2.5">
+              {profile.strengths.map((s) => {
+                const key = s.replace(/ /g, "_");
+                const score = profile.radar_scores[key]?.score ?? null;
+                return (
+                  <li key={s} className="flex items-baseline justify-between gap-3">
+                    <span className="text-[14px] capitalize" style={{ color: "var(--text-primary)" }}>
+                      {s}
+                    </span>
+                    <span className="tnum text-[15px] font-semibold" style={{ color: "var(--positive)" }}>
+                      {formatScore(score)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-[13px]" style={{ color: "var(--text-tertiary)" }}>
+              No standout strengths yet — more sessions will sharpen this.
+            </p>
+          )}
+        </Surface>
+
+        <Surface>
+          <SectionHeader title="Focus areas" />
+          {profile.weaknesses.length ? (
+            <ul className="space-y-2.5">
+              {profile.weaknesses.map((w) => {
+                const key = w.replace(/ /g, "_");
+                const score = profile.radar_scores[key]?.score ?? null;
+                return (
+                  <li key={w} className="flex items-baseline justify-between gap-3">
+                    <span className="text-[14px] capitalize" style={{ color: "var(--text-primary)" }}>
+                      {w}
+                    </span>
+                    <span className="tnum text-[15px] font-semibold" style={{ color: "var(--warning)" }}>
+                      {formatScore(score)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-[13px]" style={{ color: "var(--text-tertiary)" }}>
+              Nothing flagged yet.
+            </p>
+          )}
+        </Surface>
+      </div>
+
+      {/* Longitudinal trend */}
+      <Surface className="mb-5">
+        <SectionHeader
+          title="Progress over time"
+          description="Score after each analyzed session."
+          action={
+            history.length >= 2 ? (
+              <SegmentedControl
+                size="sm"
+                ariaLabel="Trend dimension"
+                value={trendDim}
+                onChange={setTrendDim}
+                options={[
+                  { value: "overall", label: "Overall" },
+                  ...dimensionKeys.slice(0, 5).map((k) => ({ value: k, label: DIMENSION_LABELS[k] ?? titleCase(k) })),
+                ]}
+              />
+            ) : undefined
+          }
+        />
+        {history.length < 2 ? (
+          <EmptyState
+            compact
+            title="Trends appear after two sessions"
+            description="Upload another match to start plotting your development."
+          />
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={trendData} margin={{ top: 8, right: 12, bottom: 0, left: -20 }}>
+              <CartesianGrid stroke="var(--viz-grid)" vertical={false} />
+              <XAxis dataKey="session" tick={{ fontSize: 11, fill: "var(--text-tertiary)" }} tickLine={false} axisLine={false} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "var(--text-tertiary)" }} tickLine={false} axisLine={false} />
+              <Tooltip
+                cursor={{ stroke: "var(--separator-strong)" }}
+                contentStyle={{
+                  background: "var(--surface-raised)",
+                  border: "1px solid var(--separator-strong)",
+                  borderRadius: "var(--radius-md)",
+                  color: "var(--text-primary)",
+                  fontSize: 12,
+                  boxShadow: "var(--shadow-md)",
+                }}
+                labelStyle={{ color: "var(--text-tertiary)" }}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                name={trendDim === "overall" ? "Overall" : DIMENSION_LABELS[trendDim] ?? trendDim}
+                stroke="var(--accent)"
+                strokeWidth={2}
+                dot={{ fill: "var(--accent)", r: 3 }}
+                isAnimationActive={false}
+                connectNulls
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </Surface>
+
+      <Surface>
+        <SectionHeader title="Training plan" description="What to work on next, and why." />
+        <TrainingPlanPanel profile={profile} />
+      </Surface>
+    </Page>
   );
 }

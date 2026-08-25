@@ -81,29 +81,29 @@ export function ComparisonStudio({
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-[var(--color-card)] border border-[var(--color-border-strong)] rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl shadow-black/40"
+        className="bg-[var(--surface)] border border-[var(--separator-strong)] rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl shadow-black/40"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start mb-3">
           <div>
             <h2 className="text-lg font-semibold capitalize">{name.replace(/_/g, " ")} — Comparison Studio</h2>
-            {ref && <p className="text-sm text-[var(--color-ink-soft)] mt-1">{ref.summary}</p>}
+            {ref && <p className="text-sm text-[var(--text-secondary)] mt-1">{ref.summary}</p>}
           </div>
-          <button onClick={onClose} className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)] text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xl leading-none">×</button>
         </div>
 
         {/* Configuration */}
         <div className="flex gap-2 flex-wrap mb-4 text-xs">
-          <select value={level} onChange={(e) => setLevel(e.target.value)} className="border border-[var(--color-border)] rounded-md px-2 py-1.5">
+          <select value={level} onChange={(e) => setLevel(e.target.value)} className="border border-[var(--separator)] rounded-md px-2 py-1.5">
             <option value="beginner">Beginner</option>
             <option value="intermediate">Intermediate</option>
             <option value="advanced">Advanced</option>
           </select>
-          <select value={handedness} onChange={(e) => setHandedness(e.target.value)} className="border border-[var(--color-border)] rounded-md px-2 py-1.5">
+          <select value={handedness} onChange={(e) => setHandedness(e.target.value)} className="border border-[var(--separator)] rounded-md px-2 py-1.5">
             <option value="right">Right-handed</option>
             <option value="left">Left-handed</option>
           </select>
-          <select value={context} onChange={(e) => setContext(e.target.value)} className="border border-[var(--color-border)] rounded-md px-2 py-1.5">
+          <select value={context} onChange={(e) => setContext(e.target.value)} className="border border-[var(--separator)] rounded-md px-2 py-1.5">
             <option value="">Context: general</option>
             <option value="attacking">Attacking</option>
             <option value="defensive">Defensive</option>
@@ -113,13 +113,13 @@ export function ComparisonStudio({
         </div>
 
         {!ref ? (
-          <p className="text-sm text-[var(--color-ink-soft)]">No technique reference is available for this movement yet.</p>
+          <p className="text-sm text-[var(--text-secondary)]">No technique reference is available for this movement yet.</p>
         ) : (
           <>
             {/* Side-by-side: user clip | reference */}
             <div className="grid md:grid-cols-2 gap-4 mb-4">
-              <div className="border border-[var(--color-border)] rounded-lg overflow-hidden bg-black/40">
-                <p className="text-[10px] uppercase tracking-wide text-[var(--color-ink-soft)] px-3 pt-2">Your clip</p>
+              <div className="border border-[var(--separator)] rounded-lg overflow-hidden bg-black/40">
+                <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)] px-3 pt-2">Your clip</p>
                 {src && video ? (
                   <>
                     <div className="relative mt-1">
@@ -127,13 +127,13 @@ export function ComparisonStudio({
                       <WristPathOverlay videoId={video.id} startAt={startAt} />
                     </div>
                     <div className="flex items-center gap-2 p-2 text-xs">
-                      <button onClick={() => stepFrame(-1)} className="border border-[var(--color-border)] rounded px-2 py-1 hover:bg-white/5">⟨ frame</button>
-                      <button onClick={() => stepFrame(1)} className="border border-[var(--color-border)] rounded px-2 py-1 hover:bg-white/5">frame ⟩</button>
+                      <button onClick={() => stepFrame(-1)} className="border border-[var(--separator)] rounded px-2 py-1 hover:bg-white/5">⟨ frame</button>
+                      <button onClick={() => stepFrame(1)} className="border border-[var(--separator)] rounded px-2 py-1 hover:bg-white/5">frame ⟩</button>
                       {[0.25, 0.5, 1].map((s) => (
                         <button
                           key={s}
                           onClick={() => setSpeed(s)}
-                          className={`rounded px-2 py-1 border ${speed === s ? "bg-[var(--color-accent)] text-white border-[var(--color-accent)]" : "border-[var(--color-border)] hover:bg-white/5"}`}
+                          className={`rounded px-2 py-1 border ${speed === s ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--separator)] hover:bg-white/5"}`}
                         >
                           {s}×
                         </button>
@@ -141,14 +141,14 @@ export function ComparisonStudio({
                     </div>
                   </>
                 ) : (
-                  <p className="text-xs text-[var(--color-ink-soft)] p-3">Open from a coaching insight to load your clip alongside the reference.</p>
+                  <p className="text-xs text-[var(--text-secondary)] p-3">Open from a coaching insight to load your clip alongside the reference.</p>
                 )}
               </div>
 
-              <div className="border border-[var(--color-border)] rounded-lg bg-[var(--color-bg-raised)] flex flex-col">
+              <div className="border border-[var(--separator)] rounded-lg bg-[var(--surface-raised)] flex flex-col">
                 <div className="flex items-center justify-between px-3 pt-2">
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-ink-soft)]">Reference movement</p>
-                  <button onClick={() => setPlaying((p) => !p)} className="text-xs text-[var(--color-accent)]">
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">Reference movement</p>
+                  <button onClick={() => setPlaying((p) => !p)} className="text-xs text-[var(--accent)]">
                     {playing ? "Pause" : "Play"}
                   </button>
                 </div>
@@ -166,7 +166,7 @@ export function ComparisonStudio({
                       setPlaying(false);
                       setProgress(Number(e.target.value) / 100);
                     }}
-                    className="w-full accent-[var(--color-accent)]"
+                    className="w-full accent-[var(--accent)]"
                   />
                 </div>
               </div>
@@ -178,7 +178,7 @@ export function ComparisonStudio({
                 <button
                   key={p.phase}
                   onClick={() => { setPlaying(false); setProgress(totalPhases > 1 ? (i + 0.5) / totalPhases : 0); }}
-                  className={`text-xs px-2.5 py-1 rounded-full border ${i === phaseIndex ? "bg-[var(--color-accent)] text-white border-[var(--color-accent)]" : "border-[var(--color-border)]"}`}
+                  className={`text-xs px-2.5 py-1 rounded-full border ${i === phaseIndex ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--separator)]"}`}
                 >
                   {i + 1}. {p.phase}
                 </button>
@@ -186,17 +186,17 @@ export function ComparisonStudio({
             </div>
 
             {phase && (
-              <div className="bg-white/5 border border-[var(--color-border)] rounded-lg p-4 mb-4">
+              <div className="bg-white/5 border border-[var(--separator)] rounded-lg p-4 mb-4">
                 <h3 className="font-medium text-sm mb-1">{phase.phase}</h3>
-                <p className="text-sm text-[var(--color-ink-soft)]">{phase.description}</p>
+                <p className="text-sm text-[var(--text-secondary)]">{phase.description}</p>
                 {checkpoint && (
-                  <p className="text-xs mt-2 text-[var(--color-court)]">✓ Checkpoint: {checkpoint}</p>
+                  <p className="text-xs mt-2 text-[var(--viz-series-2)]">✓ Checkpoint: {checkpoint}</p>
                 )}
               </div>
             )}
 
             {(ref.level_note || ref.context_note) && (
-              <div className="border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] rounded-lg p-3 mb-4 space-y-1">
+              <div className="border border-[var(--accent)]/40 bg-[var(--accent-soft)] rounded-lg p-3 mb-4 space-y-1">
                 {ref.level_note && <p className="text-xs"><span className="font-medium capitalize">{level}:</span> {ref.level_note}</p>}
                 {ref.context_note && <p className="text-xs"><span className="font-medium capitalize">{context.replace(/_/g, " ")}:</span> {ref.context_note}</p>}
               </div>
@@ -204,14 +204,14 @@ export function ComparisonStudio({
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <h4 className="text-xs font-semibold uppercase text-[var(--color-ink-soft)] mb-2">Common mistakes</h4>
-                <ul className="text-sm space-y-1 list-disc list-inside text-[var(--color-ink-soft)]">
+                <h4 className="text-xs font-semibold uppercase text-[var(--text-secondary)] mb-2">Common mistakes</h4>
+                <ul className="text-sm space-y-1 list-disc list-inside text-[var(--text-secondary)]">
                   {ref.common_beginner_mistakes.map((m, i) => <li key={i}>{m}</li>)}
                 </ul>
               </div>
               <div>
-                <h4 className="text-xs font-semibold uppercase text-[var(--color-ink-soft)] mb-2">Advanced variations</h4>
-                <ul className="text-sm space-y-1 list-disc list-inside text-[var(--color-ink-soft)]">
+                <h4 className="text-xs font-semibold uppercase text-[var(--text-secondary)] mb-2">Advanced variations</h4>
+                <ul className="text-sm space-y-1 list-disc list-inside text-[var(--text-secondary)]">
                   {ref.advanced_variations.map((m, i) => <li key={i}>{m}</li>)}
                 </ul>
               </div>
@@ -263,10 +263,10 @@ function WristPathOverlay({ videoId, startAt }: { videoId: string; startAt: numb
   return (
     <>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none">
-        <path d={path} fill="none" stroke="var(--color-warn)" strokeWidth="0.7" strokeDasharray="2 1.2" opacity="0.9" />
-        <circle cx={last.x * 100} cy={last.y * 100} r="1.4" fill="var(--color-warn)" />
+        <path d={path} fill="none" stroke="var(--warning)" strokeWidth="0.7" strokeDasharray="2 1.2" opacity="0.9" />
+        <circle cx={last.x * 100} cy={last.y * 100} r="1.4" fill="var(--warning)" />
       </svg>
-      <span className="absolute bottom-1 right-2 text-[9px] text-[var(--color-warn)] bg-black/50 rounded px-1.5 py-0.5 pointer-events-none">
+      <span className="absolute bottom-1 right-2 text-[9px] text-[var(--warning)] bg-black/50 rounded px-1.5 py-0.5 pointer-events-none">
         racket-hand path (wrist estimate)
       </span>
     </>
@@ -297,13 +297,13 @@ function ReferenceFigure({ progress, contactAt }: { progress: number; contactAt:
 
   return (
     <svg viewBox="0 0 190 180" width="180" height="170">
-      <line x1="30" y1="172" x2="160" y2="172" stroke="var(--color-border-strong)" strokeWidth="2" />
-      <path d={arc} fill="none" stroke="var(--color-accent)" strokeWidth="1" strokeDasharray="3 3" opacity="0.35" />
+      <line x1="30" y1="172" x2="160" y2="172" stroke="var(--separator-strong)" strokeWidth="2" />
+      <path d={arc} fill="none" stroke="var(--accent)" strokeWidth="1" strokeDasharray="3 3" opacity="0.35" />
       {nearContact && (
         <g>
-          <circle cx={rhx} cy={rhy} r="9" fill="none" stroke="var(--color-warn)" strokeWidth="1.5" opacity="0.9" />
-          <circle cx={rhx} cy={rhy} r="2.5" fill="var(--color-warn)" />
-          <text x={rhx + 12} y={rhy - 6} fontSize="8" fill="var(--color-warn)">contact</text>
+          <circle cx={rhx} cy={rhy} r="9" fill="none" stroke="var(--warning)" strokeWidth="1.5" opacity="0.9" />
+          <circle cx={rhx} cy={rhy} r="2.5" fill="var(--warning)" />
+          <text x={rhx + 12} y={rhy - 6} fontSize="8" fill="var(--warning)">contact</text>
         </g>
       )}
       <g transform={`rotate(${lean} 80 115)`}>
@@ -311,8 +311,8 @@ function ReferenceFigure({ progress, contactAt }: { progress: number; contactAt:
         <circle cx="80" cy="45" r="14" fill="#e7b790" />
         <g transform={`rotate(${armAngle} 80 65)`}>
           <line x1="80" y1="65" x2="118" y2="65" stroke="#e7b790" strokeWidth="7" strokeLinecap="round" />
-          <line x1="118" y1="65" x2="118" y2="35" stroke="var(--color-accent)" strokeWidth="3" />
-          <ellipse cx="118" cy="26" rx="9" ry="13" fill="none" stroke="var(--color-accent)" strokeWidth="3" />
+          <line x1="118" y1="65" x2="118" y2="35" stroke="var(--accent)" strokeWidth="3" />
+          <ellipse cx="118" cy="26" rx="9" ry="13" fill="none" stroke="var(--accent)" strokeWidth="3" />
         </g>
         <line x1="80" y1="65" x2="52" y2="80" stroke="#e7b790" strokeWidth="7" strokeLinecap="round" />
       </g>
@@ -335,14 +335,14 @@ function FootworkPath({ progress, mirrored }: { progress: number; mirrored: bool
   return (
     <div className="px-3 pb-1" style={{ transform: mirrored ? "scaleX(-1)" : undefined }}>
       <svg viewBox="0 0 120 56" className="w-full h-14">
-        <rect x="4" y="4" width="112" height="48" rx="3" fill="none" stroke="var(--color-border)" strokeWidth="1.5" />
-        <line x1="4" y1="28" x2="116" y2="28" stroke="var(--color-border)" strokeWidth="1" opacity="0.6" />
-        <path d="M30,46 Q55,44 85,24" fill="none" stroke="var(--color-court)" strokeWidth="1.5" strokeDasharray="3 2" opacity="0.7" />
-        <path d="M85,24 Q58,36 30,46" fill="none" stroke="var(--color-ink-soft)" strokeWidth="1" strokeDasharray="2 2" opacity="0.45" />
-        <circle cx="30" cy="46" r="2.5" fill="var(--color-ink-soft)" />
-        <circle cx="85" cy="24" r="2.5" fill="var(--color-court)" />
-        <circle cx={px} cy={py} r="3.2" fill="var(--color-accent)" />
-        <text x="8" y="14" fontSize="6" fill="var(--color-ink-soft)">footwork path: move in → plant → push back</text>
+        <rect x="4" y="4" width="112" height="48" rx="3" fill="none" stroke="var(--separator)" strokeWidth="1.5" />
+        <line x1="4" y1="28" x2="116" y2="28" stroke="var(--separator)" strokeWidth="1" opacity="0.6" />
+        <path d="M30,46 Q55,44 85,24" fill="none" stroke="var(--viz-series-2)" strokeWidth="1.5" strokeDasharray="3 2" opacity="0.7" />
+        <path d="M85,24 Q58,36 30,46" fill="none" stroke="var(--text-secondary)" strokeWidth="1" strokeDasharray="2 2" opacity="0.45" />
+        <circle cx="30" cy="46" r="2.5" fill="var(--text-secondary)" />
+        <circle cx="85" cy="24" r="2.5" fill="var(--viz-series-2)" />
+        <circle cx={px} cy={py} r="3.2" fill="var(--accent)" />
+        <text x="8" y="14" fontSize="6" fill="var(--text-secondary)">footwork path: move in → plant → push back</text>
       </svg>
     </div>
   );

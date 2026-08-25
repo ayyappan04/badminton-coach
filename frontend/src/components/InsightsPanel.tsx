@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { CoachingInsight, Video } from "../types";
+import { Confidence, EmptyState, SkeletonRows, formatTimestamp, limitationLabel } from "../ui";
 
-const CATEGORY_COLOR: Record<string, string> = {
-  technique: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
-  footwork: "bg-purple-500/15 text-purple-300",
-  positioning: "bg-[var(--color-court-soft)] text-[var(--color-court)]",
-  tactics: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
-  stamina: "bg-pink-500/15 text-pink-300",
+/** Category → accent used for the small label. Semantic colours are reserved
+ *  for improvement/regression, so categories use neutral text weight instead
+ *  of a rainbow of pills. */
+const CATEGORY_LABEL: Record<string, string> = {
+  technique: "Technique",
+  footwork: "Footwork",
+  positioning: "Positioning",
+  tactics: "Tactics",
+  stamina: "Stamina",
 };
 
 function guessTechniqueReference(insight: CoachingInsight): string | null {
@@ -30,20 +34,30 @@ export function InsightsPanel({
   onSeek: (t: number) => void;
   onOpenTechnique: (name: string, timestamp: number) => void;
 }) {
-  const [insights, setInsights] = useState<CoachingInsight[]>([]);
+  const [insights, setInsights] = useState<CoachingInsight[] | null>(null);
   const [sharedIndex, setSharedIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    api.get<CoachingInsight[]>(`/videos/${video.id}/insights`).then(setInsights).catch(() => {});
+    let cancelled = false;
+    setInsights(null);
+    api
+      .get<CoachingInsight[]>(`/videos/${video.id}/insights`)
+      .then((d) => !cancelled && setInsights(d))
+      .catch(() => !cancelled && setInsights([]));
+    return () => {
+      cancelled = true;
+    };
   }, [video.id]);
 
   async function shareClip(insight: CoachingInsight, index: number) {
-    // Uses the account's default clip-sharing scope (set in Community → Privacy).
+    // Uses the account's default clip-sharing scope (Community → Privacy).
     let scope = "private";
     try {
       const consent = await api.get<{ default_clip_share_scope: string }>("/consent-settings");
       scope = consent.default_clip_share_scope;
-    } catch { /* keep private on failure */ }
+    } catch {
+      /* keep private on failure */
+    }
     await api.post(`/videos/${video.id}/clips`, {
       video_id: video.id,
       clip_start_s: Math.max(0, insight.timestamp_s - 4),
@@ -55,72 +69,95 @@ export function InsightsPanel({
     setTimeout(() => setSharedIndex(null), 2500);
   }
 
-  if (insights.length === 0) {
+  if (insights === null) return <SkeletonRows rows={5} />;
+
+  if (!insights.length) {
     return (
-      <p className="text-sm text-[var(--color-ink-soft)]">
-        No coaching insights yet. If this video needs you to confirm which tracked player is you,
-        do that first — insights generate right after.
-      </p>
+      <EmptyState
+        compact
+        title="No coaching insights yet"
+        description={
+          video.status === "needs_player_selection"
+            ? "Confirm which tracked player is you — insights generate right after."
+            : "This match didn't produce enough clean tracking to draw findings from."
+        }
+      />
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <ol className="divide-y" style={{ borderColor: "var(--separator)" }}>
       {insights.map((insight, i) => {
         const techRef = guessTechniqueReference(insight);
         return (
-          <div key={i} className="border border-[var(--color-border)] rounded-lg p-4 bg-[var(--color-card)]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLOR[insight.category] || "bg-white/10"}`}>
-                  {insight.category}
-                </span>
-                <button onClick={() => onSeek(insight.timestamp_s)} className="text-xs text-[var(--color-accent)] hover:underline">
-                  {formatTime(insight.timestamp_s)}
-                </button>
-              </div>
-              <ConfidenceBadge value={insight.confidence} />
+          <li key={i} className="py-4 first:pt-0 last:pb-0">
+            <div className="flex items-baseline justify-between gap-3 mb-2">
+              <span
+                className="text-[11px] font-medium uppercase tracking-wider"
+                style={{ color: "var(--text-tertiary)" }}
+              >
+                {CATEGORY_LABEL[insight.category] ?? insight.category}
+              </span>
+              <Confidence value={insight.confidence} showLabel />
             </div>
-            <p className="text-sm mb-1.5"><span className="font-medium">Observed:</span> {insight.observed_action}</p>
-            <p className="text-sm mb-1.5 text-[var(--color-ink-soft)]"><span className="font-medium text-[var(--color-ink)]">Impact:</span> {insight.likely_impact}</p>
-            <p className="text-sm mb-2"><span className="font-medium">Try this:</span> {insight.correction}</p>
-            {insight.limitations.length > 0 && (
-              <p className="text-xs text-[var(--color-ink-soft)] mb-2">
-                Limitations: {insight.limitations.join(", ").replace(/_/g, " ")}
-              </p>
-            )}
-            <div className="flex gap-2 items-center flex-wrap">
+
+            <p className="text-[14px] leading-snug" style={{ color: "var(--text-primary)" }}>
+              {insight.observed_action}
+            </p>
+
+            <div className="mt-2.5 space-y-1.5">
+              <Line label="Why it matters">{insight.likely_impact}</Line>
+              <Line label="Do this">{insight.correction}</Line>
+            </div>
+
+            {/* Evidence is a first-class control, not a footnote. */}
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+                Evidence
+              </span>
+              <button
+                onClick={() => onSeek(insight.timestamp_s)}
+                className="tnum h-7 px-2.5 rounded-[var(--radius-sm)] text-[12px] font-medium transition-colors hover:brightness-125"
+                style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+              >
+                ▶ {formatTimestamp(insight.timestamp_s)}
+              </button>
+
               {techRef && (
                 <button
                   onClick={() => onOpenTechnique(techRef, insight.timestamp_s)}
-                  className="text-xs border border-[var(--color-accent)] text-[var(--color-accent)] rounded-md px-3 py-1.5 font-medium hover:bg-[var(--color-accent-soft)]"
+                  className="h-7 px-2.5 rounded-[var(--radius-sm)] text-[12px] transition-colors hover:bg-[var(--surface-hover)]"
+                  style={{ color: "var(--text-secondary)", border: "1px solid var(--separator-strong)" }}
                 >
-                  Open Comparison Studio
+                  Compare technique
                 </button>
               )}
               <button
                 onClick={() => shareClip(insight, i)}
-                className="text-xs border border-[var(--color-border-strong)] text-[var(--color-ink-soft)] rounded-md px-3 py-1.5 hover:bg-white/5"
+                className="h-7 px-2.5 rounded-[var(--radius-sm)] text-[12px] transition-colors hover:bg-[var(--surface-hover)]"
+                style={{ color: "var(--text-secondary)", border: "1px solid var(--separator-strong)" }}
               >
-                {sharedIndex === i ? "Clip saved ✓" : "Share clip"}
+                {sharedIndex === i ? "Clip saved" : "Share clip"}
               </button>
             </div>
-          </div>
+
+            {insight.limitations.length > 0 && (
+              <p className="mt-2 text-[11.5px]" style={{ color: "var(--text-tertiary)" }}>
+                {insight.limitations.map(limitationLabel).join(" · ")}
+              </p>
+            )}
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
-function ConfidenceBadge({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const color =
-    pct >= 70 ? "text-[var(--color-good)]" : pct >= 45 ? "text-[var(--color-warn)]" : "text-[var(--color-bad)]";
-  return <span className={`text-xs ${color}`}>{pct}% confidence</span>;
-}
-
-function formatTime(s: number): string {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
+function Line({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <p className="text-[13.5px] leading-snug" style={{ color: "var(--text-secondary)" }}>
+      <span style={{ color: "var(--text-tertiary)" }}>{label}: </span>
+      {children}
+    </p>
+  );
 }

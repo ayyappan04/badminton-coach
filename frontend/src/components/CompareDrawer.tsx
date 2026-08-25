@@ -37,17 +37,17 @@ export function CompareDrawer({ current, videos }: { current: Video; videos: Vid
   }
 
   if (candidates.length === 0) {
-    return <p className="text-sm text-[var(--color-ink-soft)]">Analyze a second match to unlock match comparison.</p>;
+    return <p className="text-sm text-[var(--text-secondary)]">Analyze a second match to unlock match comparison.</p>;
   }
 
   return (
-    <div className="border border-[var(--color-border)] rounded-lg bg-[var(--color-card)] p-4">
+    <div className="border border-[var(--separator)] rounded-lg bg-[var(--surface)] p-4">
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium">Compare this match with:</span>
         <select
           value={otherId}
           onChange={(e) => runCompare(e.target.value)}
-          className="text-xs border border-[var(--color-border)] rounded-md px-2 py-1.5"
+          className="text-xs border border-[var(--separator)] rounded-md px-2 py-1.5"
         >
           <option value="">Select a match…</option>
           {candidates.map((v) => (
@@ -56,13 +56,13 @@ export function CompareDrawer({ current, videos }: { current: Video; videos: Vid
             </option>
           ))}
         </select>
-        {loading && <span className="text-xs text-[var(--color-ink-soft)]">Comparing…</span>}
+        {loading && <span className="text-xs text-[var(--text-secondary)]">Comparing…</span>}
       </div>
 
       {result && (
         <div className="mt-4">
           <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 gap-y-1.5 text-xs">
-            <span className="text-[var(--color-ink-soft)]" />
+            <span className="text-[var(--text-secondary)]" />
             <span className="font-medium text-right">{shortName(result.a)}</span>
             <span className="font-medium text-right">{shortName(result.b)}</span>
             {ROWS.map(({ key, label, unit }) => {
@@ -73,7 +73,7 @@ export function CompareDrawer({ current, videos }: { current: Video; videos: Vid
               );
             })}
           </div>
-          <p className="text-[10px] text-[var(--color-ink-soft)] mt-3">{result.a.confidence_note}</p>
+          <p className="text-[10px] text-[var(--text-secondary)] mt-3">{result.a.confidence_note}</p>
         </div>
       )}
     </div>
@@ -84,11 +84,11 @@ function Row({ label, a, b, unit }: { label: string; a: number | null; b: number
   const better = a !== null && b !== null && a !== b ? (a > b ? "a" : "b") : null;
   return (
     <>
-      <span className="text-[var(--color-ink-soft)]">{label}</span>
-      <span className={`text-right ${better === "a" ? "text-[var(--color-good)] font-medium" : ""}`}>
+      <span className="text-[var(--text-secondary)]">{label}</span>
+      <span className={`text-right ${better === "a" ? "text-[var(--positive)] font-medium" : ""}`}>
         {a ?? "—"}{a !== null && unit ? unit : ""}
       </span>
-      <span className={`text-right ${better === "b" ? "text-[var(--color-good)] font-medium" : ""}`}>
+      <span className={`text-right ${better === "b" ? "text-[var(--positive)] font-medium" : ""}`}>
         {b ?? "—"}{b !== null && unit ? unit : ""}
       </span>
     </>

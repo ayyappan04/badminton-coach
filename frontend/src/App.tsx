@@ -11,7 +11,7 @@ function App() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen text-sm text-[var(--color-ink-soft)]">Loading...</div>;
+    return <div className="flex items-center justify-center h-screen text-sm text-[var(--text-secondary)]">Loading...</div>;
   }
 
   return (

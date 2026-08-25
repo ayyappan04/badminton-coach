@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { Button, SegmentedControl, Surface } from "../ui";
 
 export function AuthForms() {
   const { login, register } = useAuth();
@@ -19,83 +20,98 @@ export function AuthForms() {
       if (mode === "login") await login(email, password);
       else await register(email, password, displayName);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setBusy(false);
     }
   }
 
-  const inputClass =
-    "mt-1 w-full border border-[var(--color-border)] rounded-md px-3 py-2 focus:outline-none focus:border-[var(--color-accent)]";
-
   return (
-    <div className="max-w-sm mx-auto bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-6 shadow-lg shadow-black/20">
-      <div className="flex gap-2 mb-4">
-        <button
-          className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${mode === "register" ? "bg-[var(--color-accent)] text-white" : "bg-white/5 text-[var(--color-ink-soft)] hover:bg-white/10"}`}
-          onClick={() => setMode("register")}
-        >
-          Create account
-        </button>
-        <button
-          className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${mode === "login" ? "bg-[var(--color-accent)] text-white" : "bg-white/5 text-[var(--color-ink-soft)] hover:bg-white/10"}`}
-          onClick={() => setMode("login")}
-        >
-          Sign in
-        </button>
+    <Surface raised>
+      <div className="mb-4">
+        <SegmentedControl
+          ariaLabel="Account mode"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "register", label: "Create account" },
+            { value: "login", label: "Sign in" },
+          ]}
+        />
       </div>
-      <form onSubmit={onSubmit} className="flex flex-col gap-3 text-left">
+
+      <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
         {mode === "register" && (
-          <label className="text-sm text-[var(--color-ink-soft)]">
-            Name
+          <Field label="Name">
             <input
-              className={inputClass}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
+              autoComplete="name"
             />
-          </label>
+          </Field>
         )}
-        <label className="text-sm text-[var(--color-ink-soft)]">
-          Email
+
+        <Field label="Email">
           <input
             type="email"
-            className={inputClass}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
-        </label>
-        <label className="text-sm text-[var(--color-ink-soft)]">
-          Password
+        </Field>
+
+        <Field
+          label="Password"
+          hint={
+            mode === "register"
+              ? "At least 10 characters, using three of: lowercase, uppercase, digits, symbols."
+              : undefined
+          }
+        >
           <input
             type="password"
-            className={inputClass}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={10}
+            minLength={mode === "register" ? 10 : undefined}
+            autoComplete={mode === "register" ? "new-password" : "current-password"}
           />
-        </label>
-        {error && <p className="text-sm text-[var(--color-bad)]">{error}</p>}
-        {mode === "register" && (
-          <p className="text-xs text-[var(--color-ink-soft)] -mt-1">
-            At least 10 characters, using three of: lowercase, uppercase, digits, symbols.
+        </Field>
+
+        {error && (
+          <p role="alert" className="text-[13px]" style={{ color: "var(--negative)" }}>
+            {error}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={busy}
-          className="mt-1 bg-[var(--color-accent)] text-white rounded-md py-2 font-medium hover:bg-[var(--color-accent-dark)] disabled:opacity-50"
-        >
-          {busy ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
-        </button>
+
+        <Button type="submit" variant="primary" disabled={busy} fullWidth className="mt-1">
+          {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
+        </Button>
+
         {mode === "login" && (
-          <Link to="/forgot-password" className="text-xs text-[var(--color-accent)] hover:underline text-center">
+          <Link to="/forgot-password" className="text-[13px] text-center" style={{ color: "var(--accent)" }}>
             Forgot your password?
           </Link>
         )}
       </form>
-    </div>
+    </Surface>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
+        {label}
+      </span>
+      <div className="mt-1.5 [&>input]:w-full">{children}</div>
+      {hint && (
+        <span className="block text-[11.5px] mt-1 leading-snug" style={{ color: "var(--text-tertiary)" }}>
+          {hint}
+        </span>
+      )}
+    </label>
   );
 }

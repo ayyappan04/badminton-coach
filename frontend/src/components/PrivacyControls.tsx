@@ -20,11 +20,11 @@ export function PrivacyControls() {
   if (!settings) return null;
 
   return (
-    <div className="border border-[var(--color-border)] rounded-lg p-4 bg-[var(--color-card)] space-y-4">
+    <div className="border border-[var(--separator)] rounded-lg p-4 bg-[var(--surface)] space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">Contribute anonymized data to improve coaching models</p>
-          <p className="text-xs text-[var(--color-ink-soft)]">Off by default. You can change this any time.</p>
+          <p className="text-xs text-[var(--text-secondary)]">Off by default. You can change this any time.</p>
         </div>
         <input
           type="checkbox"
@@ -39,7 +39,7 @@ export function PrivacyControls() {
         <select
           value={settings.default_clip_share_scope}
           onChange={(e) => update({ default_clip_share_scope: e.target.value })}
-          className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm"
+          className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm"
         >
           <option value="private">Private</option>
           <option value="friends">Friends</option>
@@ -52,7 +52,7 @@ export function PrivacyControls() {
         <select
           value={settings.default_profile_share_scope}
           onChange={(e) => update({ default_profile_share_scope: e.target.value })}
-          className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm"
+          className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm"
         >
           <option value="private">Private</option>
           <option value="friends">Friends</option>
@@ -63,7 +63,7 @@ export function PrivacyControls() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">Share my progress with my clubs</p>
-          <p className="text-xs text-[var(--color-ink-soft)]">
+          <p className="text-xs text-[var(--text-secondary)]">
             Club team dashboards show your development score and matches analyzed. Off by default — never your videos or full analysis.
           </p>
         </div>
@@ -80,7 +80,7 @@ export function PrivacyControls() {
         <select
           value={settings.retention_policy}
           onChange={(e) => update({ retention_policy: e.target.value })}
-          className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm"
+          className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm"
         >
           <option value="keep_indefinitely">Keep indefinitely</option>
           <option value="delete_after_90d">Delete originals after 90 days</option>
@@ -88,7 +88,7 @@ export function PrivacyControls() {
         </select>
       </div>
 
-      {saved && <p className="text-xs text-[var(--color-good)]">Saved.</p>}
+      {saved && <p className="text-xs text-[var(--positive)]">Saved.</p>}
     </div>
   );
 }

@@ -31,7 +31,7 @@ export function HeatmapPanel({ video }: { video: Video }) {
 
   if (unavailable || !heatmap) {
     return (
-      <p className="text-sm text-[var(--color-ink-soft)]">
+      <p className="text-sm text-[var(--text-secondary)]">
         Court heatmap isn't available yet — this needs a confirmed court calibration and an
         identified player.
       </p>
@@ -58,7 +58,7 @@ export function HeatmapPanel({ video }: { video: Video }) {
           />
         ))}
       </div>
-      <p className="text-xs text-[var(--color-ink-soft)] mt-2 text-center">
+      <p className="text-xs text-[var(--text-secondary)] mt-2 text-center">
         Based on {heatmap.sample_count} tracked positions · {Math.round(heatmap.confidence * 100)}%
         confidence (depends on court calibration accuracy)
       </p>

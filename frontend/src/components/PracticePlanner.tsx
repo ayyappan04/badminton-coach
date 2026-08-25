@@ -41,7 +41,7 @@ export function PracticePlanner() {
   return (
     <div>
       <div className="grid sm:grid-cols-2 gap-2 mb-3">
-        <select value={kind} onChange={(e) => setKind(e.target.value)} className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm">
+        <select value={kind} onChange={(e) => setKind(e.target.value)} className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm">
           <option value="practice">Practice session</option>
           <option value="match">Match</option>
         </select>
@@ -49,37 +49,37 @@ export function PracticePlanner() {
           type="datetime-local"
           value={scheduledAt}
           onChange={(e) => setScheduledAt(e.target.value)}
-          className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm"
+          className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm"
         />
         <input
           placeholder="Location"
           value={location}
           onChange={(e) => setLocation(e.target.value)}
-          className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm"
+          className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm"
         />
         <input
           placeholder="Notes (e.g. focus drills)"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm"
+          className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm"
         />
       </div>
-      <button onClick={createPlan} className="bg-[var(--color-accent)] text-white text-sm px-3 py-1.5 rounded-md mb-4">
+      <button onClick={createPlan} className="bg-[var(--accent)] text-white text-sm px-3 py-1.5 rounded-md mb-4">
         + Plan session
       </button>
       <div className="flex flex-col gap-2">
         {plans.map((p) => (
-          <div key={p.plan_id} className="border border-[var(--color-border)] rounded-lg px-3 py-2 bg-[var(--color-card)]">
+          <div key={p.plan_id} className="border border-[var(--separator)] rounded-lg px-3 py-2 bg-[var(--surface)]">
             <p className="text-sm font-medium">
               {p.kind === "match" ? "Match" : "Practice"} · {new Date(p.scheduled_at).toLocaleString()}
             </p>
-            <p className="text-xs text-[var(--color-ink-soft)]">
+            <p className="text-xs text-[var(--text-secondary)]">
               {p.location || "No location set"}
               {p.notes ? ` · ${p.notes}` : ""}
             </p>
           </div>
         ))}
-        {plans.length === 0 && <p className="text-sm text-[var(--color-ink-soft)]">Nothing planned yet.</p>}
+        {plans.length === 0 && <p className="text-sm text-[var(--text-secondary)]">Nothing planned yet.</p>}
       </div>
     </div>
   );

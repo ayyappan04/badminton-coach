@@ -46,30 +46,30 @@ export function FriendsPanel() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Friend's email"
-          className="border border-[var(--color-border)] rounded-md px-3 py-1.5 text-sm flex-1"
+          className="border border-[var(--separator)] rounded-md px-3 py-1.5 text-sm flex-1"
         />
-        <button onClick={addFriend} className="bg-[var(--color-accent)] text-white text-sm px-3 py-1.5 rounded-md">
+        <button onClick={addFriend} className="bg-[var(--accent)] text-white text-sm px-3 py-1.5 rounded-md">
           Add
         </button>
       </div>
-      {message && <p className="text-xs text-[var(--color-ink-soft)] mb-3">{message}</p>}
+      {message && <p className="text-xs text-[var(--text-secondary)] mb-3">{message}</p>}
       <div className="flex flex-col gap-2">
         {friends.map((f) => (
-          <div key={f.friendship_id} className="flex items-center justify-between border border-[var(--color-border)] rounded-lg px-3 py-2 bg-[var(--color-card)]">
+          <div key={f.friendship_id} className="flex items-center justify-between border border-[var(--separator)] rounded-lg px-3 py-2 bg-[var(--surface)]">
             <div>
               <p className="text-sm font-medium">{f.display_name}</p>
-              <p className="text-xs text-[var(--color-ink-soft)]">
+              <p className="text-xs text-[var(--text-secondary)]">
                 {f.status === "pending" ? (f.requested_by_me ? "Request sent" : "Wants to connect") : "Friend"}
               </p>
             </div>
             {f.status === "pending" && !f.requested_by_me && (
-              <button onClick={() => accept(f.friendship_id)} className="text-xs text-[var(--color-accent)] hover:underline">
+              <button onClick={() => accept(f.friendship_id)} className="text-xs text-[var(--accent)] hover:underline">
                 Accept
               </button>
             )}
           </div>
         ))}
-        {friends.length === 0 && <p className="text-sm text-[var(--color-ink-soft)]">No connections yet.</p>}
+        {friends.length === 0 && <p className="text-sm text-[var(--text-secondary)]">No connections yet.</p>}
       </div>
     </div>
   );

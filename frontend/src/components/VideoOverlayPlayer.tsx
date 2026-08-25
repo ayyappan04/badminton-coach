@@ -126,7 +126,7 @@ export function VideoOverlayPlayer({ video, seekTo }: { video: Video; seekTo: nu
             key={chip.label}
             onClick={() => chip.set(!chip.state)}
             className={`px-2.5 py-1 rounded-full border ${
-              chip.state ? "bg-[var(--color-accent)] text-white border-[var(--color-accent)]" : "border-[var(--color-border)]"
+              chip.state ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--separator)]"
             }`}
           >
             {chip.label}
@@ -138,7 +138,7 @@ export function VideoOverlayPlayer({ video, seekTo }: { video: Video; seekTo: nu
         <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none w-full h-full" />
       </div>
       {!manifest && (
-        <p className="text-xs text-[var(--color-ink-soft)] mt-2">
+        <p className="text-xs text-[var(--text-secondary)] mt-2">
           Overlay data isn't available yet for this video (it may need re-processing after a server
           restart, or processing hasn't completed).
         </p>

@@ -3,11 +3,11 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 
 const CARD =
-  "max-w-sm mx-auto mt-16 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-6 shadow-lg shadow-black/20 text-center";
+  "max-w-sm mx-auto mt-16 bg-[var(--surface)] border border-[var(--separator)] rounded-xl p-6 shadow-lg shadow-black/20 text-center";
 const INPUT =
-  "mt-1 w-full border border-[var(--color-border)] rounded-md px-3 py-2 focus:outline-none focus:border-[var(--color-accent)]";
+  "mt-1 w-full border border-[var(--separator)] rounded-md px-3 py-2 focus:outline-none focus:border-[var(--accent)]";
 const BUTTON =
-  "mt-3 w-full bg-[var(--color-accent)] text-white rounded-md py-2 font-medium hover:bg-[var(--color-accent-dark)] disabled:opacity-50";
+  "mt-3 w-full bg-[var(--accent)] text-white rounded-md py-2 font-medium hover:bg-[var(--accent-pressed)] disabled:opacity-50";
 
 
 /** Request a reset link. The response is intentionally identical whether or
@@ -38,11 +38,11 @@ export function ForgotPassword() {
     return (
       <div className={CARD}>
         <h1 className="text-lg font-semibold mb-2">Check your inbox</h1>
-        <p className="text-sm text-[var(--color-ink-soft)]">
+        <p className="text-sm text-[var(--text-secondary)]">
           If an account exists for that address, a password reset link is on its way.
           The link expires in 30 minutes and can only be used once.
         </p>
-        <Link to="/" className="inline-block mt-4 text-sm text-[var(--color-accent)] hover:underline">
+        <Link to="/" className="inline-block mt-4 text-sm text-[var(--accent)] hover:underline">
           Back to sign in
         </Link>
       </div>
@@ -52,20 +52,20 @@ export function ForgotPassword() {
   return (
     <div className={CARD}>
       <h1 className="text-lg font-semibold mb-1">Reset your password</h1>
-      <p className="text-sm text-[var(--color-ink-soft)] mb-4">
+      <p className="text-sm text-[var(--text-secondary)] mb-4">
         We'll email you a link to choose a new one.
       </p>
       <form onSubmit={onSubmit} className="text-left">
-        <label className="text-sm text-[var(--color-ink-soft)]">
+        <label className="text-sm text-[var(--text-secondary)]">
           Email
           <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} />
         </label>
-        {error && <p className="text-sm text-[var(--color-bad)] mt-2">{error}</p>}
+        {error && <p className="text-sm text-[var(--negative)] mt-2">{error}</p>}
         <button type="submit" disabled={busy} className={BUTTON}>
           {busy ? "Sending..." : "Send reset link"}
         </button>
       </form>
-      <Link to="/" className="inline-block mt-4 text-sm text-[var(--color-accent)] hover:underline">
+      <Link to="/" className="inline-block mt-4 text-sm text-[var(--accent)] hover:underline">
         Back to sign in
       </Link>
     </div>
@@ -108,10 +108,10 @@ export function ResetPassword() {
     return (
       <div className={CARD}>
         <h1 className="text-lg font-semibold mb-2">Link incomplete</h1>
-        <p className="text-sm text-[var(--color-ink-soft)]">
+        <p className="text-sm text-[var(--text-secondary)]">
           This reset link is missing its token. Request a new one.
         </p>
-        <Link to="/forgot-password" className="inline-block mt-4 text-sm text-[var(--color-accent)] hover:underline">
+        <Link to="/forgot-password" className="inline-block mt-4 text-sm text-[var(--accent)] hover:underline">
           Request a new link
         </Link>
       </div>
@@ -121,8 +121,8 @@ export function ResetPassword() {
   if (done) {
     return (
       <div className={CARD}>
-        <h1 className="text-lg font-semibold mb-2 text-[var(--color-good)]">Password updated</h1>
-        <p className="text-sm text-[var(--color-ink-soft)]">
+        <h1 className="text-lg font-semibold mb-2 text-[var(--positive)]">Password updated</h1>
+        <p className="text-sm text-[var(--text-secondary)]">
           All other sessions have been signed out. Taking you to sign in…
         </p>
       </div>
@@ -132,21 +132,21 @@ export function ResetPassword() {
   return (
     <div className={CARD}>
       <h1 className="text-lg font-semibold mb-1">Choose a new password</h1>
-      <p className="text-xs text-[var(--color-ink-soft)] mb-4">
+      <p className="text-xs text-[var(--text-secondary)] mb-4">
         At least 10 characters, using three of: lowercase, uppercase, digits, symbols.
       </p>
       <form onSubmit={onSubmit} className="text-left">
-        <label className="text-sm text-[var(--color-ink-soft)]">
+        <label className="text-sm text-[var(--text-secondary)]">
           New password
           <input type="password" required minLength={10} value={password}
                  onChange={(e) => setPassword(e.target.value)} className={INPUT} />
         </label>
-        <label className="text-sm text-[var(--color-ink-soft)] block mt-3">
+        <label className="text-sm text-[var(--text-secondary)] block mt-3">
           Confirm password
           <input type="password" required minLength={10} value={confirm}
                  onChange={(e) => setConfirm(e.target.value)} className={INPUT} />
         </label>
-        {error && <p className="text-sm text-[var(--color-bad)] mt-2">{error}</p>}
+        {error && <p className="text-sm text-[var(--negative)] mt-2">{error}</p>}
         <button type="submit" disabled={busy} className={BUTTON}>
           {busy ? "Updating..." : "Update password"}
         </button>
@@ -187,14 +187,14 @@ export function VerifyEmail() {
   }, [token]);
 
   if (state === "working") {
-    return <div className={CARD}><p className="text-sm text-[var(--color-ink-soft)]">Verifying your email…</p></div>;
+    return <div className={CARD}><p className="text-sm text-[var(--text-secondary)]">Verifying your email…</p></div>;
   }
   if (state === "ok") {
     return (
       <div className={CARD}>
-        <h1 className="text-lg font-semibold mb-2 text-[var(--color-good)]">Email verified</h1>
-        <p className="text-sm text-[var(--color-ink-soft)]">Your account is ready.</p>
-        <a href="/" className="inline-block mt-4 text-sm text-[var(--color-accent)] hover:underline">
+        <h1 className="text-lg font-semibold mb-2 text-[var(--positive)]">Email verified</h1>
+        <p className="text-sm text-[var(--text-secondary)]">Your account is ready.</p>
+        <a href="/" className="inline-block mt-4 text-sm text-[var(--accent)] hover:underline">
           Go to your coach
         </a>
       </div>
@@ -203,11 +203,11 @@ export function VerifyEmail() {
   return (
     <div className={CARD}>
       <h1 className="text-lg font-semibold mb-2">Verification failed</h1>
-      <p className="text-sm text-[var(--color-ink-soft)]">{message}</p>
-      <p className="text-xs text-[var(--color-ink-soft)] mt-2">
+      <p className="text-sm text-[var(--text-secondary)]">{message}</p>
+      <p className="text-xs text-[var(--text-secondary)] mt-2">
         Verification links expire and can only be used once. Sign in to request a new one.
       </p>
-      <Link to="/" className="inline-block mt-4 text-sm text-[var(--color-accent)] hover:underline">
+      <Link to="/" className="inline-block mt-4 text-sm text-[var(--accent)] hover:underline">
         Back to sign in
       </Link>
     </div>

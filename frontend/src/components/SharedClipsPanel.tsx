@@ -15,7 +15,7 @@ export function SharedClipsPanel({ currentUserId }: { currentUserId: string }) {
 
   if (clips.length === 0) {
     return (
-      <p className="text-sm text-[var(--color-ink-soft)]">
+      <p className="text-sm text-[var(--text-secondary)]">
         No clips yet. Use "Share clip" on any coaching insight to save a moment here.
       </p>
     );
@@ -24,11 +24,11 @@ export function SharedClipsPanel({ currentUserId }: { currentUserId: string }) {
   return (
     <div className="space-y-2">
       {clips.map((c) => (
-        <div key={c.clip_id} className="border border-[var(--color-border)] rounded-lg bg-[var(--color-card)] p-3">
+        <div key={c.clip_id} className="border border-[var(--separator)] rounded-lg bg-[var(--surface)] p-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm truncate">{c.caption || "Shared clip"}</p>
-              <p className="text-xs text-[var(--color-ink-soft)]">
+              <p className="text-xs text-[var(--text-secondary)]">
                 {formatTime(c.clip_start_s)}–{formatTime(c.clip_end_s)} ·{" "}
                 <span className="capitalize">{c.visibility}</span>
                 {c.created_by_user_id === currentUserId ? " · yours" : ""}
@@ -36,7 +36,7 @@ export function SharedClipsPanel({ currentUserId }: { currentUserId: string }) {
             </div>
             <button
               onClick={() => setPlaying(playing === c.clip_id ? null : c.clip_id)}
-              className="text-xs border border-[var(--color-accent)] text-[var(--color-accent)] rounded-md px-3 py-1.5 shrink-0 hover:bg-[var(--color-accent-soft)]"
+              className="text-xs border border-[var(--accent)] text-[var(--accent)] rounded-md px-3 py-1.5 shrink-0 hover:bg-[var(--accent-soft)]"
             >
               {playing === c.clip_id ? "Hide" : "▶ Play"}
             </button>

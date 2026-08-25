@@ -40,6 +40,10 @@ class VideoOut(BaseModel):
     stage: Optional[str] = None
     processing_error: Optional[str] = None
     result_summary: Optional[str] = None
+    # Already stored on the model; surfaced here so the match library can show
+    # recording quality and date without an extra request per video.
+    quality_score: Optional[int] = None
+    recorded_at: Optional[str] = None
 
     class Config:
         from_attributes = True

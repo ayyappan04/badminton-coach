@@ -13,9 +13,11 @@ export const DIMENSION_LABELS: Record<string, string> = {
   tactical_awareness: "Tactical awareness",
 };
 
+/** Multidimensional shape only — the numbers live beside it so nobody has to
+ *  estimate a value from a polygon. */
 export function RadarChartPanel({
   radarScores,
-  height = 280,
+  height = 300,
   showCaption = true,
 }: {
   radarScores: Record<string, ScoreEntry>;
@@ -23,35 +25,52 @@ export function RadarChartPanel({
   showCaption?: boolean;
 }) {
   const entries = Object.entries(radarScores);
-  if (entries.length === 0) {
+  if (!entries.length) {
     return (
-      <p className="text-sm text-[var(--color-ink-soft)]">
-        Your play-style radar will appear here once at least one match has been fully analyzed.
+      <p className="text-[13px]" style={{ color: "var(--text-tertiary)" }}>
+        Your attribute profile appears once a match has been fully analyzed.
       </p>
     );
   }
 
   const data = entries.map(([key, val]) => ({
-    dimension: DIMENSION_LABELS[key] || key,
+    dimension: DIMENSION_LABELS[key] ?? key,
     score: val.score ?? 0,
   }));
 
-  const avgConfidence =
-    entries.reduce((acc, [, v]) => acc + v.confidence, 0) / entries.length;
+  const avgConfidence = entries.reduce((acc, [, v]) => acc + v.confidence, 0) / entries.length;
 
   return (
     <div>
       <ResponsiveContainer width="100%" height={height}>
-        <RadarChart data={data} outerRadius="72%">
-          <PolarGrid stroke="var(--color-border-strong)" />
-          <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "var(--color-ink-soft)" }} />
-          <PolarRadiusAxis type="number" angle={30} domain={[0, 100]} tickCount={5} tick={{ fontSize: 9, fill: "var(--color-ink-soft)" }} stroke="var(--color-border)" />
-          <Radar dataKey="score" stroke="var(--color-accent)" strokeWidth={2} fill="var(--color-accent)" fillOpacity={0.35} isAnimationActive={false} />
+        <RadarChart data={data} outerRadius="70%">
+          <PolarGrid stroke="var(--viz-grid)" strokeWidth={1} />
+          <PolarAngleAxis
+            dataKey="dimension"
+            tick={{ fontSize: 11, fill: "var(--text-tertiary)" }}
+          />
+          <PolarRadiusAxis
+            type="number"
+            angle={90}
+            domain={[0, 100]}
+            tickCount={5}
+            tick={{ fontSize: 9, fill: "var(--text-tertiary)" }}
+            stroke="transparent"
+            axisLine={false}
+          />
+          <Radar
+            dataKey="score"
+            stroke="var(--accent)"
+            strokeWidth={2}
+            fill="var(--accent)"
+            fillOpacity={0.22}
+            isAnimationActive={false}
+          />
         </RadarChart>
       </ResponsiveContainer>
       {showCaption && (
-        <p className="text-xs text-[var(--color-ink-soft)] text-center">
-          Average confidence: {Math.round(avgConfidence * 100)}% — improves as you analyze more matches.
+        <p className="text-[11.5px] text-center" style={{ color: "var(--text-tertiary)" }}>
+          Average confidence {Math.round(avgConfidence * 100)}% — rises as you analyze more matches.
         </p>
       )}
     </div>

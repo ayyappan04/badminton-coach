@@ -38,7 +38,7 @@ export function ReviewsPanel() {
 
   if (asCoach.length === 0 && asStudent.length === 0) {
     return (
-      <p className="text-sm text-[var(--color-ink-soft)]">
+      <p className="text-sm text-[var(--text-secondary)]">
         No coaching reviews yet. Invite a coach from any match on your dashboard, or ask a player to invite you.
       </p>
     );
@@ -48,19 +48,19 @@ export function ReviewsPanel() {
     <div className="space-y-3">
       {asCoach.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold uppercase text-[var(--color-ink-soft)] mb-2">Matches to review (you're the coach)</h3>
+          <h3 className="text-xs font-semibold uppercase text-[var(--text-secondary)] mb-2">Matches to review (you're the coach)</h3>
           <div className="space-y-2">
             {asCoach.map((r) => (
-              <div key={r.review_id} className="border border-[var(--color-border)] rounded-lg bg-[var(--color-card)] p-3 flex items-center justify-between gap-3">
+              <div key={r.review_id} className="border border-[var(--separator)] rounded-lg bg-[var(--surface)] p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm truncate">{r.student_name} · {r.video_filename}</p>
-                  <p className="text-xs text-[var(--color-ink-soft)]">
+                  <p className="text-xs text-[var(--text-secondary)]">
                     {r.match_format} · {r.note_count} note{r.note_count === 1 ? "" : "s"} · {r.status}
                     {r.message ? ` · “${r.message}”` : ""}
                   </p>
                 </div>
                 {r.status === "active" && (
-                  <button onClick={() => open(r.review_id)} className="text-xs bg-[var(--color-accent)] text-white rounded-md px-3 py-1.5 shrink-0 hover:bg-[var(--color-accent-dark)]">
+                  <button onClick={() => open(r.review_id)} className="text-xs bg-[var(--accent)] text-white rounded-md px-3 py-1.5 shrink-0 hover:bg-[var(--accent-pressed)]">
                     Review
                   </button>
                 )}
@@ -72,16 +72,16 @@ export function ReviewsPanel() {
 
       {asStudent.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold uppercase text-[var(--color-ink-soft)] mb-2">Reviews you requested</h3>
+          <h3 className="text-xs font-semibold uppercase text-[var(--text-secondary)] mb-2">Reviews you requested</h3>
           <div className="space-y-2">
             {asStudent.map((r) => (
-              <div key={r.review_id} className="border border-[var(--color-border)] rounded-lg bg-[var(--color-card)] p-3 flex items-center justify-between gap-3">
+              <div key={r.review_id} className="border border-[var(--separator)] rounded-lg bg-[var(--surface)] p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm truncate">{r.coach_name} · {r.video_filename}</p>
-                  <p className="text-xs text-[var(--color-ink-soft)]">{r.note_count} note{r.note_count === 1 ? "" : "s"} · {r.status}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{r.note_count} note{r.note_count === 1 ? "" : "s"} · {r.status}</p>
                 </div>
                 {r.status === "active" && (
-                  <button onClick={() => revoke(r.review_id)} className="text-xs border border-[var(--color-bad)]/50 text-[var(--color-bad)] rounded-md px-3 py-1.5 shrink-0 hover:bg-[var(--color-bad-soft)]">
+                  <button onClick={() => revoke(r.review_id)} className="text-xs border border-[var(--negative)]/50 text-[var(--negative)] rounded-md px-3 py-1.5 shrink-0 hover:bg-[var(--negative-soft)]">
                     Revoke access
                   </button>
                 )}
@@ -139,26 +139,26 @@ function ReviewWorkspace({
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-[var(--color-card)] border border-[var(--color-border-strong)] rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl shadow-black/40"
+        className="bg-[var(--surface)] border border-[var(--separator-strong)] rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl shadow-black/40"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start mb-3">
           <div>
             <h2 className="text-lg font-semibold">Reviewing {detail.student_name} — {detail.video.filename}</h2>
-            <p className="text-xs text-[var(--color-ink-soft)] mt-1">
+            <p className="text-xs text-[var(--text-secondary)] mt-1">
               Your notes appear on {detail.student_name}'s dashboard next to the AI insights. Access ends when you complete the review.
             </p>
           </div>
-          <button onClick={onClose} className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)] text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xl leading-none">×</button>
         </div>
 
         <video ref={videoRef} src={src} controls className="w-full max-h-64 rounded-md bg-black/40 mb-4" />
 
         <div className="grid md:grid-cols-2 gap-4 mb-4">
           <div>
-            <h3 className="text-xs font-semibold uppercase text-[var(--color-ink-soft)] mb-2">AI insights on this match</h3>
+            <h3 className="text-xs font-semibold uppercase text-[var(--text-secondary)] mb-2">AI insights on this match</h3>
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-              {detail.ai_insights.length === 0 && <p className="text-xs text-[var(--color-ink-soft)]">No AI insights were generated.</p>}
+              {detail.ai_insights.length === 0 && <p className="text-xs text-[var(--text-secondary)]">No AI insights were generated.</p>}
               {detail.ai_insights.map((i) => (
                 <button
                   key={i.insight_id}
@@ -168,25 +168,25 @@ function ReviewWorkspace({
                   }}
                   className={`w-full text-left border rounded-lg p-2.5 text-xs transition ${
                     relatedInsight === i.insight_id
-                      ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
-                      : "border-[var(--color-border)] bg-[var(--color-bg-raised)] hover:bg-[var(--color-card-hover)]"
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                      : "border-[var(--separator)] bg-[var(--surface-raised)] hover:bg-[var(--surface-hover)]"
                   }`}
                 >
-                  <span className="text-[var(--color-accent)]">{formatTime(i.timestamp_s)}</span> · {i.category} · {Math.round(i.confidence * 100)}%
-                  <p className="mt-1 text-[var(--color-ink-soft)]">{i.observed_action.slice(0, 110)}…</p>
+                  <span className="text-[var(--accent)]">{formatTime(i.timestamp_s)}</span> · {i.category} · {Math.round(i.confidence * 100)}%
+                  <p className="mt-1 text-[var(--text-secondary)]">{i.observed_action.slice(0, 110)}…</p>
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <h3 className="text-xs font-semibold uppercase text-[var(--color-ink-soft)] mb-2">Your notes</h3>
+            <h3 className="text-xs font-semibold uppercase text-[var(--text-secondary)] mb-2">Your notes</h3>
             <div className="space-y-2 max-h-32 overflow-y-auto pr-1 mb-3">
-              {detail.notes.length === 0 && <p className="text-xs text-[var(--color-ink-soft)]">No notes yet.</p>}
+              {detail.notes.length === 0 && <p className="text-xs text-[var(--text-secondary)]">No notes yet.</p>}
               {detail.notes.map((n) => (
-                <div key={n.note_id} className="border border-[var(--color-border)] rounded-lg p-2.5 text-xs bg-[var(--color-bg-raised)]">
-                  <span className="text-[var(--color-accent)]">{formatTime(n.timestamp_s)}</span>
-                  {n.stance && <span className="ml-2 capitalize text-[var(--color-ink-soft)]">({n.stance})</span>}
+                <div key={n.note_id} className="border border-[var(--separator)] rounded-lg p-2.5 text-xs bg-[var(--surface-raised)]">
+                  <span className="text-[var(--accent)]">{formatTime(n.timestamp_s)}</span>
+                  {n.stance && <span className="ml-2 capitalize text-[var(--text-secondary)]">({n.stance})</span>}
                   <p className="mt-1">{n.comment}</p>
                 </div>
               ))}
@@ -198,17 +198,17 @@ function ReviewWorkspace({
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Note at the current video position… (click an AI insight to link your note to it)"
                 rows={3}
-                className="w-full text-sm border border-[var(--color-border)] rounded-md px-3 py-2 focus:outline-none focus:border-[var(--color-accent)]"
+                className="w-full text-sm border border-[var(--separator)] rounded-md px-3 py-2 focus:outline-none focus:border-[var(--accent)]"
               />
               <div className="flex gap-2 items-center">
-                <select value={stance} onChange={(e) => setStance(e.target.value)} className="text-xs border border-[var(--color-border)] rounded-md px-2 py-1.5">
+                <select value={stance} onChange={(e) => setStance(e.target.value)} className="text-xs border border-[var(--separator)] rounded-md px-2 py-1.5">
                   <option value="">No stance on AI</option>
                   <option value="agree">Agree with AI insight</option>
                   <option value="adjust">Adjust AI insight</option>
                   <option value="disagree">Override AI insight</option>
                 </select>
-                {relatedInsight && <span className="text-[10px] text-[var(--color-accent)]">linked to insight ✓</span>}
-                <button type="submit" className="ml-auto text-xs bg-[var(--color-accent)] text-white rounded-md px-3 py-1.5 hover:bg-[var(--color-accent-dark)]">
+                {relatedInsight && <span className="text-[10px] text-[var(--accent)]">linked to insight ✓</span>}
+                <button type="submit" className="ml-auto text-xs bg-[var(--accent)] text-white rounded-md px-3 py-1.5 hover:bg-[var(--accent-pressed)]">
                   Add note
                 </button>
               </div>
@@ -217,7 +217,7 @@ function ReviewWorkspace({
         </div>
 
         <div className="flex justify-end">
-          <button onClick={onComplete} className="text-xs border border-[var(--color-good)]/50 text-[var(--color-good)] rounded-md px-4 py-2 hover:bg-[var(--color-good-soft)]">
+          <button onClick={onComplete} className="text-xs border border-[var(--positive)]/50 text-[var(--positive)] rounded-md px-4 py-2 hover:bg-[var(--positive-soft)]">
             Complete review (ends your access)
           </button>
         </div>

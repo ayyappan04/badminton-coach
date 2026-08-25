@@ -19,6 +19,8 @@ export interface Video {
   stage: string | null;
   processing_error: string | null;
   result_summary: string | null;
+  quality_score: number | null;
+  recorded_at: string | null;
 }
 
 export interface TrackedPerson {

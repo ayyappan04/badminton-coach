@@ -28,13 +28,13 @@ export function VideoUpload({ onUploaded }: { onUploaded: (video: Video) => void
   }
 
   return (
-    <div className="border border-dashed border-[var(--color-border)] rounded-xl p-6 bg-[var(--color-card)]">
+    <div className="border border-dashed border-[var(--separator)] rounded-xl p-6 bg-[var(--surface)]">
       <h3 className="font-medium mb-3">Upload a match</h3>
       <div className="flex flex-wrap gap-3 mb-3">
         <select
           value={matchFormat}
           onChange={(e) => setMatchFormat(e.target.value)}
-          className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm"
+          className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm"
         >
           <option value="singles">Singles</option>
           <option value="doubles">Doubles</option>
@@ -44,7 +44,7 @@ export function VideoUpload({ onUploaded }: { onUploaded: (video: Video) => void
           placeholder="Opponent name (optional)"
           value={opponentName}
           onChange={(e) => setOpponentName(e.target.value)}
-          className="border border-[var(--color-border)] rounded-md px-2 py-1.5 text-sm flex-1 min-w-[160px]"
+          className="border border-[var(--separator)] rounded-md px-2 py-1.5 text-sm flex-1 min-w-[160px]"
         />
       </div>
       <input
@@ -57,12 +57,12 @@ export function VideoUpload({ onUploaded }: { onUploaded: (video: Video) => void
       <button
         onClick={() => inputRef.current?.click()}
         disabled={busy}
-        className="bg-[var(--color-accent)] text-white px-4 py-2 rounded-md font-medium disabled:opacity-50"
+        className="bg-[var(--accent)] text-white px-4 py-2 rounded-md font-medium disabled:opacity-50"
       >
         {busy ? "Uploading..." : "Choose video file"}
       </button>
-      {error && <p className="text-sm text-[var(--color-bad)] mt-2">{error}</p>}
-      <p className="text-xs text-[var(--color-ink-soft)] mt-3">
+      {error && <p className="text-sm text-[var(--negative)] mt-2">{error}</p>}
+      <p className="text-xs text-[var(--text-secondary)] mt-3">
         Supported: .mp4, .mov, .m4v, .avi. Tripod, baseline, side-court, or elevated recordings all
         work — clearer, more direct angles give more reliable results.
       </p>
