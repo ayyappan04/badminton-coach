@@ -129,6 +129,27 @@ permanent answer (close the laptop and queued matches wait), but it proves the
 cloud wiring before you pay anyone to host it, and moving to a hosted worker
 later is a config change, not a code change.
 
+### Choosing a host
+
+| Option | Monthly | Worker hosted | Cold starts | You maintain |
+|---|---|---|---|---|
+| Render free + local worker | **$0** | no — your machine | ~50s after idle | nothing |
+| Render starter + worker | ~$32 | yes | no | nothing |
+| **One VM** (2 vCPU / 4 GB) | **~€4–24** | yes | no | OS, TLS, restarts |
+| Kubernetes | more | yes | no | a control plane |
+
+**Kubernetes is the wrong answer here** and probably will be for a long time.
+Two containers and one queue do not need an orchestrator; you would spend more
+time operating the cluster than the application.
+
+**A single VM is the best value** once the worker needs to run without your
+laptop open. The expensive component is the worker — CPU and memory bound —
+and VMs sell exactly that cheaply, whereas managed platforms charge a premium
+for a background process. `deploy/vm/` makes it close to turnkey.
+
+**Render is the fastest to a working URL**, and free if you run the worker
+locally. Start here if you want it working today.
+
 ### Option A — Render (simplest)
 
 `render.yaml` at the repo root defines both services. Render prompts once for
@@ -172,6 +193,54 @@ fly scale count worker=3
 Raising `WORKER_CONCURRENCY` instead makes concurrent pipelines contend for the
 same cores and the same frame-buffer budget, so they finish later than they
 would in sequence.
+
+### Option C — a single VM (best value once the worker must stay up)
+
+Runs the API, the worker and automatic HTTPS on one box. Tested shape: Hetzner
+CX22 or any 2 vCPU / 4 GB Ubuntu 24.04 instance.
+
+**1. Point a domain at it.** Create an A record for `api.yourdomain.com` before
+running anything — Caddy obtains its certificate over ACME, and without DNS it
+retries in a loop.
+
+**2. Prepare the machine:**
+
+```bash
+ssh root@YOUR_VM_IP
+curl -fsSL https://raw.githubusercontent.com/ayyappan04/badminton-coach/main/deploy/vm/setup.sh | bash
+```
+
+That installs Docker, creates a non-root user to run the stack, restricts the
+firewall to SSH and HTTP(S), enables unattended security updates, adds 2 GB of
+swap, and installs a systemd unit so the stack survives a reboot.
+
+**3. Configure and start:**
+
+```bash
+cp /opt/shuttlesense/deploy/vm/env.example /opt/shuttlesense/deploy/vm/.env
+nano /opt/shuttlesense/deploy/vm/.env
+systemctl start shuttlesense
+```
+
+Use the **direct** database connection (port 5432) here: the worker holds long
+transactions and pgmq state that transaction-mode pooling breaks, and the API's
+load on a single VM is trivial.
+
+The API is never published to the host — only Caddy binds 80 and 443, and it
+proxies over the internal Docker network. A firewall mistake cannot expose the
+API without TLS.
+
+```bash
+systemctl restart shuttlesense                  # after a config change
+docker compose -f /opt/shuttlesense/deploy/vm/docker-compose.vm.yml logs -f
+```
+
+Updating is `git pull && systemctl restart shuttlesense`.
+
+**Memory matters more than cores.** On 4 GB keep `WORKER_MEMORY=3g` and
+`MAX_ANALYSIS_FRAME_MB=900`, leaving headroom for the OS, Caddy and the API.
+Set the frame budget too close to the container limit and a long match is
+OOM-killed instead of degrading to a sparser sample rate.
 
 ### Whichever you pick
 

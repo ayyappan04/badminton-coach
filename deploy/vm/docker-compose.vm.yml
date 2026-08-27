@@ -1,0 +1,80 @@
+# Production stack for a single VM: API + worker + automatic HTTPS.
+#
+#   docker compose -f deploy/vm/docker-compose.vm.yml --env-file deploy/vm/.env up -d
+#
+# Caddy terminates TLS and obtains a Let's Encrypt certificate on its own, so
+# there is no certbot cron to forget about. The API listens only on the Docker
+# network — it is never exposed directly, so a misconfigured firewall cannot
+# accidentally publish it without TLS.
+
+x-app-env: &app-env
+  APP_ENV: production
+  LOG_FORMAT: json
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  STORAGE_BACKEND: supabase
+  JOB_BACKEND: pgmq
+  AUTH_MODE: supabase
+  STORAGE_DIR: /tmp/shuttlesense
+  SUPABASE_URL: ${SUPABASE_URL:?set SUPABASE_URL}
+  SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?set SUPABASE_SERVICE_ROLE_KEY}
+  DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+  CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to your frontend origin}
+  METRICS_TOKEN: ${METRICS_TOKEN:-}
+
+services:
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    image: shuttlesense-api:latest
+    environment: *app-env
+    # No published port: only Caddy reaches it.
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    # Same image, command overridden — so the worker's dependencies cannot
+    # drift from the ones the handler code was tested against.
+    image: shuttlesense-api:latest
+    depends_on:
+      - api
+    command: ["python", "-m", "app.jobs.runner"]
+    environment:
+      <<: *app-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      # Must sit comfortably below the container memory limit, or a long match
+      # is OOM-killed instead of degrading to a sparser sample rate.
+      MAX_ANALYSIS_FRAME_MB: ${MAX_ANALYSIS_FRAME_MB:-1200}
+    healthcheck:
+      disable: true          # serves no HTTP; liveness is the process itself
+    restart: unless-stopped
+    mem_limit: ${WORKER_MEMORY:-3g}
+    tmpfs:
+      - /tmp/shuttlesense:size=8g
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN, e.g. api.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for certificate expiry notices}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data          # certificates; losing this re-issues them
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

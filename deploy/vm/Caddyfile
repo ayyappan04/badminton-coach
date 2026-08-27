@@ -1,0 +1,32 @@
+# Automatic HTTPS. Caddy obtains and renews the certificate itself, which
+# removes the usual certbot-cron-that-silently-stopped-working failure mode.
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	encode gzip
+
+	# The API is the only thing behind this domain. Video bytes do NOT pass
+	# through here — uploads go browser -> Supabase Storage, and playback comes
+	# from a signed CDN URL — so the proxy never needs a large body limit.
+	reverse_proxy api:8000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
