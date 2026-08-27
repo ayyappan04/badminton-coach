@@ -156,8 +156,12 @@ class Worker:
         if hasattr(self.dispatcher, "ensure_queues"):
             try:
                 self.dispatcher.ensure_queues()
-            except Exception:  # noqa: BLE001
-                logger.warning("could not ensure queues exist", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                # Not fatal: the queues are normally created by
+                # supabase/migrations, so a worker that cannot create them may
+                # still be able to read them perfectly well.
+                log(logger, logging.WARNING, "could not ensure queues exist",
+                    detail=f"{type(exc).__name__}: {exc}"[:300])
         log(logger, logging.INFO, "worker started", worker_id=self.worker_id,
             backend=getattr(self.dispatcher, "backend", "?"),
             concurrency=self.concurrency)

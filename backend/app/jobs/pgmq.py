@@ -35,10 +35,42 @@ class PgmqJobDispatcher:
         return SessionLocal()
 
     def ensure_queues(self) -> None:
-        """Idempotent. Safe to call on every worker boot."""
+        """Create the queues if they are missing. Safe on every worker boot.
+
+        `pgmq.create()` is NOT idempotent: on an existing queue it tries to
+        re-register the queue's sequence with the extension and fails with
+
+            sequence pgmq.q_<name>_msg_id_seq is already a member of
+            extension "pgmq"
+
+        Since the queues are normally created by supabase/migrations, that is
+        the ordinary case, and every worker boot printed a stack trace for a
+        situation that is entirely correct. Ask what exists first, and create
+        only what does not.
+        """
         with self._session() as db:
+            try:
+                existing = {
+                    row[0] for row in db.execute(text("SELECT queue_name FROM pgmq.list_queues()"))
+                }
+            except Exception:  # noqa: BLE001 — older pgmq builds lack list_queues()
+                existing = set()
+
             for name in (self.queue, self.dlq):
-                db.execute(text("SELECT pgmq.create(:q)"), {"q": name})
+                if name in existing:
+                    logger.debug("queue %s already exists", name)
+                    continue
+                try:
+                    db.execute(text("SELECT pgmq.create(:q)"), {"q": name})
+                    logger.info("created queue %s", name)
+                except Exception as exc:  # noqa: BLE001
+                    # Lost a race with another worker booting at the same time,
+                    # or list_queues() was unavailable above. Both are benign.
+                    if "already" in str(exc).lower():
+                        logger.debug("queue %s already exists (concurrent create)", name)
+                        db.rollback()
+                        continue
+                    raise
             db.commit()
 
     # -- interface ---------------------------------------------------------
