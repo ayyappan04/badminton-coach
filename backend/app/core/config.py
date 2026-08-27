@@ -15,8 +15,19 @@ STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", BASE_DIR / "storage"))
 UPLOADS_DIR = STORAGE_DIR / "uploads"
 DERIVED_DIR = STORAGE_DIR / "derived"
 
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-DERIVED_DIR.mkdir(parents=True, exist_ok=True)
+
+def ensure_local_dirs() -> None:
+    """Create the local storage tree.
+
+    Called lazily by the local storage backend and the legacy upload path --
+    deliberately NOT at import time. Creating directories as an import side
+    effect means merely importing this module can raise PermissionError, which
+    is exactly what happens when a container mounts a root-owned volume and
+    runs as a non-root user. A process configured for object storage does not
+    need these directories at all and must not crash looking for them.
+    """
+    for directory in (UPLOADS_DIR, DERIVED_DIR):
+        directory.mkdir(parents=True, exist_ok=True)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'app.db'}")
 

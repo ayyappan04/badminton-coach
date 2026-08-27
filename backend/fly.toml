@@ -1,0 +1,74 @@
+# Fly.io deployment for the ShuttleSense API and worker.
+#
+# Lives in backend/ so the Docker build context is backend/ — the Dockerfile
+# does `COPY . /app` and must not be handed the whole repository.
+#
+#   cd backend
+#   fly launch --no-deploy --copy-config     # first time only
+#   fly secrets set SUPABASE_SERVICE_ROLE_KEY=... DATABASE_URL=... SUPABASE_URL=...
+#   fly deploy
+#
+# ONE app, two process groups. Same image, different command — so the worker's
+# dependencies can never drift from the ones the handler code was tested with.
+
+app = "shuttlesense"
+primary_region = "iad"          # put this near your Supabase region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  api    = "uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips *"
+  worker = "python -m app.jobs.runner"
+
+[env]
+  APP_ENV = "production"
+  LOG_FORMAT = "json"
+  STORAGE_BACKEND = "supabase"
+  JOB_BACKEND = "pgmq"
+  AUTH_MODE = "supabase"
+  WORKER_CONCURRENCY = "1"
+  # Scratch space for per-run working directories. Ephemeral by contract.
+  STORAGE_DIR = "/tmp/shuttlesense"
+
+# Only the api process serves HTTP. The worker has no ingress at all, which is
+# the point: it cannot be reached from the internet.
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_start_machines = true
+  # Never scale the API to zero: a cold start in front of an upload
+  # authorization turns a fast call into a visibly slow one.
+  auto_stop_machines = "off"
+  min_machines_running = 1
+  processes = ["api"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 60
+
+# The API is a control plane: small JSON in, small JSON out. It needs almost
+# nothing, because no video byte ever passes through it.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["api"]
+
+# The worker decodes video and runs pose estimation. This is where the money
+# goes. Memory must exceed MAX_ANALYSIS_FRAME_MB (default 1200) with real
+# headroom for OpenCV and MediaPipe buffers.
+[[vm]]
+  size = "performance-2x"
+  memory = "4gb"
+  processes = ["worker"]
+
+# Liveness only, and only for the process that serves HTTP. Deliberately not
+# /ready: a brief Supabase blip should show up in alerting, not cause Fly to
+# restart a process that is working fine.
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/api/v1/health"

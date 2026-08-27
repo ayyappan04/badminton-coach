@@ -1,0 +1,56 @@
+# Local override: run the whole stack with NO cloud credentials.
+#
+#   docker compose --env-file deploy/local.env \
+#     -f docker-compose.yml -f docker-compose.local.yml up --build
+#
+# The --env-file is required: the base file's `:?` guards are evaluated when
+# compose PARSES the file, before this override merges, so an override alone
+# cannot satisfy them. That ordering is a feature — it means a production
+# `docker compose up` cannot start half-configured.
+#
+# Uses the local storage and job backends and a SQLite file on a named volume,
+# so the API and worker genuinely share state. This is for checking that the
+# containers themselves work — the durable-queue and object-storage paths are
+# exercised by the test suite and by a real Supabase project, not here.
+#
+# The base compose file requires Supabase secrets on purpose; this override
+# supplies harmless local values so it can start without them.
+
+services:
+  api:
+    environment:
+      APP_ENV: development
+      LOG_FORMAT: text
+      STORAGE_BACKEND: local
+      JOB_BACKEND: local
+      AUTH_MODE: legacy
+      DATABASE_URL: sqlite:////data/shuttlesense.db
+      STORAGE_DIR: /data/storage
+      JWT_SECRET: local-compose-secret-not-a-real-credential
+      SUPABASE_URL: ""
+      SUPABASE_SERVICE_ROLE_KEY: ""
+      CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - shared-data:/data
+
+  worker:
+    environment:
+      APP_ENV: development
+      LOG_FORMAT: text
+      STORAGE_BACKEND: local
+      JOB_BACKEND: local
+      AUTH_MODE: legacy
+      DATABASE_URL: sqlite:////data/shuttlesense.db
+      STORAGE_DIR: /data/storage
+      JWT_SECRET: local-compose-secret-not-a-real-credential
+      SUPABASE_URL: ""
+      SUPABASE_SERVICE_ROLE_KEY: ""
+      WORKER_CONCURRENCY: "1"
+    volumes:
+      - shared-data:/data
+    # No resource limits locally: `deploy.resources` is a Swarm directive and
+    # is ignored by `docker compose up` anyway.
+    deploy: {}
+
+volumes:
+  shared-data:

@@ -289,3 +289,62 @@ def deferred_jobs(monkeypatch):
     reset_dispatcher_cache()
     yield get_dispatcher()
     reset_dispatcher_cache()
+
+
+def make_rotated_clip(tmp_path, size="1920x1080", rate=25, duration=1):
+    """A clip carrying a 90-degree display rotation, on any ffmpeg version.
+
+    There is no single portable way to author one:
+      * `-display_rotation` is an INPUT option added in ffmpeg 6; it is the
+        only method that works on 7/8, and does not exist on 5.x.
+      * writing the legacy `rotate` tag into a .mov produces a rotation
+        side-data on 5.x, but is ignored by 7/8.
+
+    The dev machine and the production image are on opposite sides of that
+    split (8.0 vs the 5.1 in Debian bookworm), so the fixture tries both and
+    uses whichever actually produced a rotated file. Returns None if neither
+    did, so the caller can skip rather than assert against a fixture that
+    silently is not testing anything.
+    """
+    import json
+    import subprocess
+    from app.media import ffmpeg as ff
+
+    binary = ff.ffmpeg_bin()
+    base = tmp_path / "rot_base.mp4"
+    subprocess.run([
+        binary, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", f"testsrc2=size={size}:rate={rate}:duration={duration}",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+        "-pix_fmt", "yuv420p", str(base),
+    ], check=True, capture_output=True)
+
+    def rotation_of(path):
+        out = subprocess.run(
+            [ff.ffprobe_bin(), "-v", "error", "-print_format", "json",
+             "-show_streams", str(path)], capture_output=True, text=True).stdout
+        try:
+            stream = json.loads(out)["streams"][0]
+        except (KeyError, IndexError, json.JSONDecodeError):
+            return 0
+        for side in stream.get("side_data_list") or []:
+            if "rotation" in side:
+                return abs(int(float(side["rotation"]))) % 360
+        tag = (stream.get("tags") or {}).get("rotate")
+        return abs(int(float(tag))) % 360 if tag else 0
+
+    candidates = [
+        # ffmpeg >= 6
+        (tmp_path / "rot_a.mp4",
+         [binary, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+          "-display_rotation", "90", "-i", str(base), "-c", "copy"]),
+        # ffmpeg 5.x
+        (tmp_path / "rot_b.mov",
+         [binary, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+          "-i", str(base), "-c", "copy", "-metadata:s:v:0", "rotate=90"]),
+    ]
+    for dest, argv in candidates:
+        result = subprocess.run([*argv, str(dest)], capture_output=True)
+        if result.returncode == 0 and dest.exists() and rotation_of(dest) == 90:
+            return dest
+    return None

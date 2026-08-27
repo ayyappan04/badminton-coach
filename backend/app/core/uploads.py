@@ -19,7 +19,7 @@ from typing import Optional, Tuple
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import (
-    MAX_UPLOAD_BYTES, MAX_ORIGINAL_FILENAME_LEN, UPLOADS_DIR,
+    MAX_UPLOAD_BYTES, MAX_ORIGINAL_FILENAME_LEN, UPLOADS_DIR, ensure_local_dirs,
 )
 
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".webm"}
@@ -91,6 +91,7 @@ def save_upload(file: UploadFile) -> Tuple[Path, str, int]:
     display_name = sanitize_display_filename(file.filename)
     ext = validated_extension(file.filename)
 
+    ensure_local_dirs()
     dest_path = (UPLOADS_DIR / f"{uuid.uuid4().hex}{ext}").resolve()
     # Belt and braces: the generated name cannot escape, but assert it anyway.
     if dest_path.parent != Path(UPLOADS_DIR).resolve():

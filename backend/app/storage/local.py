@@ -23,6 +23,8 @@ class LocalVideoStorage:
 
     def __init__(self, root: Optional[Path] = None):
         self.root = Path(root or config.STORAGE_DIR) / "objects"
+        # This backend is the reason the directory needs to exist, so it is
+        # the thing that creates it.
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, bucket: str, key: str) -> Path:

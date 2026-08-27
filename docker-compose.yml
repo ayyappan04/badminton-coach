@@ -49,10 +49,22 @@ services:
       start_period: 20s
 
   worker:
+    # The SAME image as the API, with the command overridden. Two Dockerfiles
+    # would let the worker's dependencies drift from the ones the handler code
+    # was tested against — and a worker Dockerfile that inherits FROM the API
+    # image cannot be built by any platform that builds from a Dockerfile
+    # alone (Render, Fly, Cloud Run, Railway all do).
     build:
       context: ./backend
-      dockerfile: Dockerfile.worker
-    image: shuttlesense-worker:latest
+      dockerfile: Dockerfile
+    image: shuttlesense-api:latest
+    command: ["python", "-m", "app.jobs.runner"]
+    # The image's HEALTHCHECK curls /api/v1/health. The worker serves no HTTP,
+    # so inheriting it would mark a perfectly healthy worker unhealthy forever.
+    # Its liveness is the process itself; stalled WORK is detected by the
+    # lease/heartbeat mechanism in the database, not by an HTTP probe.
+    healthcheck:
+      disable: true
     depends_on:
       api:
         condition: service_started

@@ -61,8 +61,16 @@ class Worker:
         try:
             with SessionLocal() as db:
                 requeue_stalled(db, self.dispatcher)
+            self._sweep_failures = 0
         except Exception:  # noqa: BLE001
-            logger.warning("stall sweep failed", exc_info=True)
+            # Full detail the first time, then a one-liner. A recurring
+            # infrastructure fault should not bury every other log line.
+            self._sweep_failures = getattr(self, "_sweep_failures", 0) + 1
+            if self._sweep_failures == 1:
+                logger.warning("stall sweep failed", exc_info=True)
+            else:
+                log(logger, logging.WARNING, "stall sweep still failing",
+                    consecutive=self._sweep_failures)
 
     def handle(self, message: JobMessage) -> str:
         try:
@@ -105,11 +113,51 @@ class Worker:
             pass
         return len(messages)
 
+    def preflight(self) -> list:
+        """Check the things that make this worker able to do any work at all.
+
+        A worker whose schema is missing will otherwise loop forever, logging a
+        stack trace every sweep — technically resilient, but the first thing an
+        operator sees on a fresh deploy is a wall of traceback rather than
+        "you did not run the migrations". Say it once, clearly, at boot.
+        """
+        from sqlalchemy import inspect as sa_inspect
+        from app.db.session import engine
+        from app.media import ffmpeg
+
+        problems = []
+        try:
+            tables = set(sa_inspect(engine).get_table_names())
+            missing = {"videos", "analysis_runs", "video_assets"} - tables
+            if missing:
+                problems.append(
+                    f"database schema incomplete (missing: {', '.join(sorted(missing))}). "
+                    "Run `alembic upgrade head` against DATABASE_URL before starting workers."
+                )
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"cannot reach the database: {exc}")
+
+        if not ffmpeg.available():
+            problems.append(
+                "ffmpeg not found. The worker cannot probe or normalize media without it."
+            )
+        return problems
+
     def run_forever(self) -> None:
         configure_logging()
         self.install_signal_handlers()
+
+        for problem in self.preflight():
+            log(logger, logging.ERROR, "preflight check failed", problem=problem)
+        # Deliberately does NOT exit: a database that is briefly unreachable at
+        # boot should be retried, not turned into a crash-loop. The loop below
+        # backs off, and the messages above tell an operator what to fix.
+
         if hasattr(self.dispatcher, "ensure_queues"):
-            self.dispatcher.ensure_queues()
+            try:
+                self.dispatcher.ensure_queues()
+            except Exception:  # noqa: BLE001
+                logger.warning("could not ensure queues exist", exc_info=True)
         log(logger, logging.INFO, "worker started", worker_id=self.worker_id,
             backend=getattr(self.dispatcher, "backend", "?"),
             concurrency=self.concurrency)

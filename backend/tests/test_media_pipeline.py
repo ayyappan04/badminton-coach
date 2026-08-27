@@ -208,12 +208,15 @@ def test_playback_proxy_is_materially_smaller(tmp_path, ffmpeg_available):
 
 def test_rotated_portrait_clip_is_baked_upright(tmp_path, ffmpeg_available):
     """cv2 does NOT apply a display matrix. Without this step every portrait
-    phone upload would be analyzed sideways and court detection would fail."""
-    base = synth(tmp_path / "base.mp4", size="1920x1080", rate=30, duration=1)
-    rotated = tmp_path / "portrait.mp4"
-    subprocess.run([ffmpeg.ffmpeg_bin(), "-nostdin", "-hide_banner", "-loglevel", "error",
-                    "-y", "-display_rotation", "90", "-i", str(base), "-c", "copy",
-                    str(rotated)], check=True, capture_output=True)
+    phone upload would be analyzed sideways and court detection would fail.
+
+    Verified on both ffmpeg 8.0 (dev) and the 5.1.9 in the production image.
+    """
+    from conftest import make_rotated_clip
+
+    rotated = make_rotated_clip(tmp_path)
+    if rotated is None:
+        pytest.skip("this ffmpeg build cannot author a rotated fixture")
 
     info = probe(rotated)
     assert info.rotation == 90

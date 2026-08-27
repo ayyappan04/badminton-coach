@@ -243,6 +243,7 @@ Video bytes take exactly two paths, and neither touches Vercel or the API:
 `storage → browser` for playback via a short-lived signed URL.
 
 **Full detail: [docs/PRODUCTION_ARCHITECTURE.md](docs/PRODUCTION_ARCHITECTURE.md).**
+Getting it deployed: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 Schema and provenance: [docs/DATA_MODEL.md](docs/DATA_MODEL.md).
 Runbook: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
@@ -336,6 +337,12 @@ supabase link --project-ref <ref> && supabase db push
 docker compose up --build
 ```
 
+Or run the whole stack locally with no cloud credentials at all:
+
+```bash
+docker compose --env-file deploy/local.env -f docker-compose.yml -f docker-compose.local.yml up --build
+```
+
 ```bash
 # 4. check every dependency before sending traffic
 cd backend && python manage.py doctor
@@ -390,15 +397,17 @@ docker run -p 1025:1025 -p 8025:8025 axllent/mailpit   # local capture
 
 The **container runtime is Python 3.12** (`backend/Dockerfile`), which is what
 unblocked the patched releases of FastAPI, Starlette and `python-multipart`
-that all require 3.10+. `requirements.txt` targets that runtime.
+that all require 3.10+. `requirements.txt` targets that runtime, and the image
+has been built and the suite run inside it: **236 passed, 5 skipped**. The
+skips are files `.dockerignore` deliberately excludes (`.git`, the frontend,
+`.env.example`); those same tests run and pass outside the container.
 
-The development machine this was built on has only Python 3.9 available, so the
-committed test results were produced against `requirements-py39.txt` — the
-older, 3.9-capped pin set. The 3.12 set has been statically validated (every
-pin resolves, declares 3.12 support, and satisfies the cross-package
-constraints) but **has not been executed**, because building the image requires
-a Docker daemon that was not available. Running `docker compose up --build`
-followed by `pytest` inside the image is the remaining validation step.
+The development machine has only Python 3.9, so the *local* results come from
+`requirements-py39.txt` — the older, 3.9-capped pin set. Both are exercised:
+241 locally (including the repo-level checks), 236 in the image.
+
+The image ships Debian bookworm's **ffmpeg 5.1.9**. Every operation the media
+pipeline performs is verified working on it, including rotation baking.
 
 ---
 

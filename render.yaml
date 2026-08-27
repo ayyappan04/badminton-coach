@@ -1,0 +1,79 @@
+# Render blueprint: the ShuttleSense API and worker.
+#
+#   Render dashboard -> New -> Blueprint -> point at this repo
+#
+# Both services build the SAME Dockerfile and differ only in the command. The
+# worker overrides dockerCommand rather than using a second Dockerfile, so its
+# dependencies cannot drift from the ones the handler code was tested with.
+#
+# Secrets are `sync: false`: Render prompts for them once and never stores them
+# in this file. SUPABASE_SERVICE_ROLE_KEY bypasses Row Level Security entirely
+# and must never be committed anywhere.
+
+services:
+  # --- control plane ------------------------------------------------------
+  - type: web
+    name: shuttlesense-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_FORMAT
+        value: json
+      - key: STORAGE_BACKEND
+        value: supabase
+      - key: JOB_BACKEND
+        value: pgmq
+      - key: AUTH_MODE
+        value: supabase
+      - key: STORAGE_DIR
+        value: /tmp/shuttlesense
+      # Must list your Vercel origin, or the browser's API calls are refused.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: METRICS_TOKEN
+        generateValue: true
+
+  # --- compute ------------------------------------------------------------
+  - type: worker
+    name: shuttlesense-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # CV work is CPU and memory bound. Scale by adding instances, never by
+    # raising WORKER_CONCURRENCY: two pipelines on one box contend for the
+    # same cores AND the same frame-buffer budget, so they finish later than
+    # they would in sequence.
+    plan: standard
+    dockerCommand: python -m app.jobs.runner
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_FORMAT
+        value: json
+      - key: STORAGE_BACKEND
+        value: supabase
+      - key: JOB_BACKEND
+        value: pgmq
+      - key: AUTH_MODE
+        value: supabase
+      - key: STORAGE_DIR
+        value: /tmp/shuttlesense
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false

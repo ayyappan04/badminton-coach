@@ -4,7 +4,8 @@
 #
 # ONE image, two entrypoints. The API container and the worker container run
 # identical code and differ only in the command they start — so a job handler
-# can never be tested against one build and deployed as another.
+# can never be tested against one build and deployed as another, and every
+# managed host can build it without a pre-existing local tag.
 #
 # Runtime is Python 3.12. The MVP was pinned to 3.9 (EOL October 2025), which
 # capped FastAPI, Starlette and python-multipart below their patched releases.
@@ -65,8 +66,12 @@ COPY --chown=shuttle:shuttle . /app
 
 # Scratch space for per-run working directories. Ephemeral by contract — the
 # worker treats local disk as temporary and object storage as durable.
-RUN mkdir -p /app/storage /tmp/shuttlesense \
-    && chown -R shuttle:shuttle /app/storage /tmp/shuttlesense
+# /data exists in the IMAGE so that a named volume mounted there inherits this
+# ownership. Docker seeds an empty named volume from the image's directory,
+# permissions included; without this the volume arrives root-owned and a
+# non-root container cannot write to it.
+RUN mkdir -p /app/storage /tmp/shuttlesense /data \
+    && chown -R shuttle:shuttle /app/storage /tmp/shuttlesense /data
 
 USER shuttle
 
@@ -82,5 +87,9 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://localhost:8000/api/v1/health || exit 1
 
+# Default command is the API. The worker runs this same image with the command
+# overridden to `python -m app.jobs.runner` — one image, so the worker's
+# dependencies cannot drift from the ones the handler code was tested against.
+# Every host config in deploy/ does exactly that.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
      "--proxy-headers", "--forwarded-allow-ips", "*"]

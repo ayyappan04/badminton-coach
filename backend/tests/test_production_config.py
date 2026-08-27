@@ -8,6 +8,8 @@ import os
 import subprocess
 import sys
 import textwrap
+
+import pytest
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -108,7 +110,15 @@ def test_unverified_login_blocked_when_verification_required(tmp_path):
 
 def test_no_secrets_committed_to_the_repo():
     """Guard against a real credential being pasted into tracked source."""
+    import shutil
+
     repo = BACKEND_DIR.parent
+    # The container image ships neither git nor a .git directory (both are in
+    # .dockerignore, deliberately). A scan that cannot run must skip, not pass
+    # silently — a green tick from a test that did nothing is worse than a skip.
+    if shutil.which("git") is None or not (repo / ".git").exists():
+        pytest.skip("no git work tree here (e.g. inside the container image)")
+
     tracked = subprocess.run(["git", "ls-files"], cwd=repo, capture_output=True, text=True).stdout.split()
     suspicious = []
     needles = ("sk-ant-", "sk-live-", "AKIA", "-----BEGIN RSA PRIVATE KEY-----",
