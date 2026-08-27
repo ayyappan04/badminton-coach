@@ -109,6 +109,26 @@ supabase db push
 They cannot run on Vercel — OpenCV and MediaPipe rule that out, which is the
 whole reason the architecture puts them in containers. Pick a container host.
 
+### Option 0 — worker on your own machine (start here)
+
+The API is a control plane and costs almost nothing to host. The **worker** is
+the expensive half: it decodes video and runs pose estimation, so it wants CPU
+and several gigabytes of memory. Managed hosts charge accordingly, and there is
+no free background-worker tier on Render.
+
+So deploy the API, and run the worker locally at first:
+
+```bash
+cp deploy/worker.env.example deploy/worker.env   # fill in two values
+./deploy/run-worker-local.sh
+```
+
+This exercises the entire production path — TUS uploads landing in Supabase
+Storage, pgmq handing out jobs, signed playback URLs — for nothing. It is not a
+permanent answer (close the laptop and queued matches wait), but it proves the
+cloud wiring before you pay anyone to host it, and moving to a hosted worker
+later is a config change, not a code change.
+
 ### Option A — Render (simplest)
 
 `render.yaml` at the repo root defines both services. Render prompts once for

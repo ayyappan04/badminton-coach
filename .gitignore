@@ -27,3 +27,6 @@ frontend/dist/
 backend/tests/footage/
 *.webm
 *.ogv
+
+# Filled-in worker credentials (see deploy/worker.env.example)
+deploy/worker.env
