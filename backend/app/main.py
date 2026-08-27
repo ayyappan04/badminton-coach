@@ -25,7 +25,32 @@ configure_logging()
 # a production process must never mutate the schema as a side effect.
 if not config.IS_PRODUCTION:
     Base.metadata.create_all(engine)
-seed_content()
+
+
+def _seed_reference_content() -> None:
+    """Populate the drill/technique catalogue, tolerating an absent database.
+
+    Deliberately NOT allowed to kill the process. Seeding connects to Postgres
+    at import time, so any database misconfiguration used to crash the app
+    before it could serve a single request — including /api/v1/ready, the
+    endpoint whose entire purpose is explaining that exact class of failure.
+    Diagnostics that are unavailable precisely when they are needed are not
+    diagnostics.
+
+    The service now starts, /health returns 200 (the process IS alive), and
+    /ready returns 503 naming the cause.
+    """
+    try:
+        seed_content()
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "could not seed reference content: %s. The service will start, but "
+            "/api/v1/ready will report the dependency that is failing.",
+            f"{type(exc).__name__}: {exc}"[:300],
+        )
+
+
+_seed_reference_content()
 
 app = FastAPI(
     title="AI Badminton Coach API",
@@ -161,7 +186,23 @@ def ready():
         checks["queue"] = False
         reasons["queue"] = f"{type(exc).__name__}: {exc}"[:200]
 
-    ok = all(checks.values())
+    # Configuration that is missing rather than broken. A blueprint prompts for
+    # several values and it is easy to leave one blank; the resulting failure
+    # appears somewhere unrelated and much later.
+    misconfigured = []
+    if config.STORAGE_BACKEND == "supabase":
+        if not config.SUPABASE_URL:
+            misconfigured.append("SUPABASE_URL is empty but STORAGE_BACKEND=supabase")
+        if not config.SUPABASE_SERVICE_ROLE_KEY:
+            misconfigured.append("SUPABASE_SERVICE_ROLE_KEY is empty but STORAGE_BACKEND=supabase")
+    if config.AUTH_MODE in ("supabase", "dual") and not config.SUPABASE_URL:
+        misconfigured.append(f"SUPABASE_URL is empty but AUTH_MODE={config.AUTH_MODE}")
+    if config.IS_PRODUCTION and not config.CORS_ORIGINS:
+        misconfigured.append("CORS_ORIGINS is empty; browser requests will be refused")
+    if misconfigured:
+        reasons["configuration"] = "; ".join(misconfigured)
+
+    ok = all(checks.values()) and not misconfigured
     return JSONResponse(
         status_code=200 if ok else 503,
         content={

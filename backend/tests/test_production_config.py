@@ -195,3 +195,57 @@ def test_jwt_secret_required_only_when_legacy_tokens_are_accepted(tmp_path):
     result = _run_module(probe, {**base, "AUTH_MODE": "supabase",
                                  "JWT_SECRET": "a-real-secret-value-for-this-test"})
     assert "STARTED True" in result.stdout
+
+
+def test_api_starts_even_when_the_database_is_unreachable(tmp_path):
+    """A web service must boot and report degraded, not crash-loop.
+
+    Import-time seeding used to connect to Postgres, so any database
+    misconfiguration killed the process before it could serve /api/v1/ready —
+    the endpoint whose entire purpose is explaining that class of failure.
+    Diagnostics unavailable precisely when needed are not diagnostics.
+    """
+    probe = (
+        "from fastapi.testclient import TestClient; from app.main import app; "
+        "c = TestClient(app); "
+        "h = c.get('/api/v1/health'); r = c.get('/api/v1/ready'); "
+        "print('HEALTH', h.status_code); print('READY', r.status_code); "
+        "print('DBREASON', (r.json().get('reasons') or {}).get('database', ''))"
+    )
+    result = _run_module(probe, {
+        "APP_ENV": "production",
+        "AUTH_MODE": "supabase",
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "sb_secret_placeholder",
+        # Points nowhere reachable.
+        "DATABASE_URL": "postgresql://postgres:pw@127.0.0.1:1/postgres",
+        "STORAGE_DIR": str(tmp_path / "s"),
+        "CORS_ORIGINS": "https://example.com",
+    })
+    assert "HEALTH 200" in result.stdout, (
+        "the process did not survive an unreachable database:\n"
+        f"{result.stdout[-600:]}\n{result.stderr[-1200:]}"
+    )
+    assert "READY 503" in result.stdout, "readiness should report degraded"
+    assert "DBREASON" in result.stdout and "check DATABASE_URL" in result.stdout
+
+
+def test_ready_names_missing_configuration(tmp_path):
+    """A blueprint prompts for several values and it is easy to leave one
+    blank. The resulting failure otherwise appears somewhere unrelated."""
+    probe = (
+        "from fastapi.testclient import TestClient; from app.main import app; "
+        "c = TestClient(app); r = c.get('/api/v1/ready'); "
+        "print('CONFIG', (r.json().get('reasons') or {}).get('configuration', ''))"
+    )
+    result = _run_module(probe, {
+        "APP_ENV": "production",
+        "AUTH_MODE": "supabase",
+        "STORAGE_BACKEND": "supabase",
+        "SUPABASE_URL": "",
+        "SUPABASE_SERVICE_ROLE_KEY": "",
+        "DATABASE_URL": f"sqlite:///{tmp_path/'c.db'}",
+        "STORAGE_DIR": str(tmp_path / "s"),
+    })
+    assert "SUPABASE_URL is empty" in result.stdout, result.stdout[-500:]
+    assert "AUTH_MODE=supabase" in result.stdout
