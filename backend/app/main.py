@@ -131,6 +131,7 @@ def ready():
     from app.storage import get_storage
 
     checks = {}
+    reasons = {}
 
     try:
         with engine.connect() as conn:
@@ -139,16 +140,26 @@ def ready():
     except Exception:  # noqa: BLE001
         logger.warning("readiness: database unreachable", exc_info=True)
         checks["database"] = False
+        reasons["database"] = "cannot connect; check DATABASE_URL"
 
     try:
-        checks["storage"] = bool(get_storage().health())
-    except Exception:  # noqa: BLE001
+        storage = get_storage()
+        checks["storage"] = bool(storage.health())
+        if not checks["storage"]:
+            detail = getattr(storage, "last_health_error", None)
+            if detail:
+                reasons["storage"] = detail
+    except Exception as exc:  # noqa: BLE001
         checks["storage"] = False
+        reasons["storage"] = f"{type(exc).__name__}: {exc}"[:200]
 
     try:
         checks["queue"] = bool(get_dispatcher().health())
-    except Exception:  # noqa: BLE001
+        if not checks["queue"]:
+            reasons["queue"] = "queue unreachable; check DATABASE_URL and that pgmq exists"
+    except Exception as exc:  # noqa: BLE001
         checks["queue"] = False
+        reasons["queue"] = f"{type(exc).__name__}: {exc}"[:200]
 
     ok = all(checks.values())
     return JSONResponse(
@@ -156,6 +167,9 @@ def ready():
         content={
             "status": "ready" if ok else "degraded",
             "checks": checks,
+            # Only present when something is wrong. Never contains a
+            # credential -- these are status codes and provider messages.
+            **({"reasons": reasons} if reasons else {}),
             "storage_backend": config.STORAGE_BACKEND,
             "job_backend": config.JOB_BACKEND,
             "auth_mode": config.AUTH_MODE,

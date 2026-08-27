@@ -12,6 +12,7 @@ session token, so the bytes never touch this process.
 """
 from __future__ import annotations
 
+import logging
 import posixpath
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +23,8 @@ import httpx
 
 from app.core import config
 from app.storage.base import ObjectStat, StorageError, UploadAuthorization
+
+logger = logging.getLogger("app.storage.supabase")
 
 _TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=10.0)
 
@@ -37,6 +40,10 @@ def _iso(value: Optional[str]) -> Optional[datetime]:
 
 class SupabaseVideoStorage:
     backend = "supabase"
+
+    #: Why the last health() call failed, or None. Read by /ready so a failure
+    #: explains itself. Never contains a credential.
+    last_health_error: Optional[str] = None
 
     def __init__(self, url: Optional[str] = None, service_key: Optional[str] = None):
         self.url = (url or config.SUPABASE_URL).rstrip("/")
@@ -238,10 +245,40 @@ class SupabaseVideoStorage:
         return out
 
     def health(self) -> bool:
+        """Can we reach Storage with the credentials we were given?
+
+        Records WHY it failed on `last_health_error`. A bare "storage: false"
+        is a miserable thing to debug on a fresh deploy, and the two likely
+        causes -- a revoked key and a wrong URL -- look identical without it.
+        """
         try:
             with self._client() as c:
                 r = c.get(f"{self.base}/bucket", headers=self._headers(),
                           timeout=httpx.Timeout(10.0))
-            return r.status_code < 400
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            self.last_health_error = f"cannot reach {self.url}: {type(exc).__name__}"
+            logger.warning("storage unreachable: %s", self.last_health_error)
             return False
+
+        if r.status_code < 400:
+            self.last_health_error = None
+            return True
+
+        # Supabase returns a JSON error body here. It never echoes the key, so
+        # it is safe to surface -- and it is the single most useful thing an
+        # operator can be told at this moment.
+        try:
+            body = r.json()
+            detail = body.get("message") or body.get("error") or ""
+        except Exception:  # noqa: BLE001
+            detail = r.text[:120]
+
+        hint = ""
+        if r.status_code in (400, 401, 403):
+            hint = " (check SUPABASE_SERVICE_ROLE_KEY -- a rotated or revoked key looks like this)"
+        elif r.status_code == 404:
+            hint = " (check SUPABASE_URL)"
+
+        self.last_health_error = f"HTTP {r.status_code}: {detail}{hint}"
+        logger.warning("storage health check failed: %s", self.last_health_error)
+        return False

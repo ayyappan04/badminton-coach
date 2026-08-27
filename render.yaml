@@ -17,7 +17,11 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter
+    # `free` so a first deploy needs no payment. The tradeoff is real: free
+    # instances sleep after ~15 minutes idle and the next request pays a
+    # ~50 second cold start, during which the frontend shows its
+    # "can't reach the API" banner. Change to `starter` once it matters.
+    plan: free
     healthCheckPath: /api/v1/health
     envVars:
       - key: APP_ENV
@@ -45,35 +49,46 @@ services:
         generateValue: true
 
   # --- compute ------------------------------------------------------------
-  - type: worker
-    name: shuttlesense-worker
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    # CV work is CPU and memory bound. Scale by adding instances, never by
-    # raising WORKER_CONCURRENCY: two pipelines on one box contend for the
-    # same cores AND the same frame-buffer budget, so they finish later than
-    # they would in sequence.
-    plan: standard
-    dockerCommand: python -m app.jobs.runner
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: LOG_FORMAT
-        value: json
-      - key: STORAGE_BACKEND
-        value: supabase
-      - key: JOB_BACKEND
-        value: pgmq
-      - key: AUTH_MODE
-        value: supabase
-      - key: STORAGE_DIR
-        value: /tmp/shuttlesense
-      - key: WORKER_CONCURRENCY
-        value: "1"
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
+  # The worker is commented out DELIBERATELY. It decodes video and runs pose
+  # estimation, so it needs real CPU and memory, and Render has no free
+  # background-worker tier — hosting it costs more than everything else here
+  # combined. Run it on your own machine first:
+  #
+  #     ./deploy/run-worker-local.sh
+  #
+  # That exercises the same production path (TUS to Supabase Storage, pgmq,
+  # signed playback) for nothing. Uncomment the block below when queued matches
+  # waiting for your laptop stops being acceptable.
+  #
+#   - type: worker
+#     name: shuttlesense-worker
+#     runtime: docker
+#     dockerfilePath: ./backend/Dockerfile
+#     dockerContext: ./backend
+#     # CV work is CPU and memory bound. Scale by adding instances, never by
+#     # raising WORKER_CONCURRENCY: two pipelines on one box contend for the
+#     # same cores AND the same frame-buffer budget, so they finish later than
+#     # they would in sequence.
+#     plan: standard
+#     dockerCommand: python -m app.jobs.runner
+#     envVars:
+#       - key: APP_ENV
+#         value: production
+#       - key: LOG_FORMAT
+#         value: json
+#       - key: STORAGE_BACKEND
+#         value: supabase
+#       - key: JOB_BACKEND
+#         value: pgmq
+#       - key: AUTH_MODE
+#         value: supabase
+#       - key: STORAGE_DIR
+#         value: /tmp/shuttlesense
+#       - key: WORKER_CONCURRENCY
+#         value: "1"
+#       - key: SUPABASE_URL
+#         sync: false
+#       - key: SUPABASE_SERVICE_ROLE_KEY
+#         sync: false
+#       - key: DATABASE_URL
+#         sync: false
