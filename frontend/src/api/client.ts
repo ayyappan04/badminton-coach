@@ -1,6 +1,35 @@
 import { supabase, supabaseEnabled } from "../lib/supabase";
 
-const BASE = "/api/v1";
+/* --- where the API lives ---------------------------------------------------
+   The API is a separate container service, not a Vercel function, so the
+   frontend has to be told where it is.
+
+   VITE_API_BASE_URL set   -> absolute cross-origin calls (production).
+                              The API's CORS_ORIGINS must list this site.
+   VITE_API_BASE_URL unset -> same-origin /api/v1, which is what the Vite dev
+                              proxy serves and what a Vercel rewrite would
+                              serve if you prefer to proxy instead.
+   -------------------------------------------------------------------------- */
+const API_ROOT = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+const BASE = `${API_ROOT}/api/v1`;
+
+/** Absolute URL for an API path. Exported because <video> and <img> need a
+ *  URL string rather than a fetch. */
+export function apiUrl(path: string): string {
+  return `${BASE}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/** Resolve a URL the API handed back. Signed storage URLs are already
+ *  absolute; local-dev object routes are relative and need the API origin. */
+export function resolveApiUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_ROOT}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+/** True when the API host is unreachable rather than merely refusing us. */
+export function isNetworkError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 0;
+}
 
 /* ==========================================================================
    API client.

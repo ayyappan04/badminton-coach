@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, ApiError, setSupabaseToken } from "../api/client";
+import { api, ApiError, isNetworkError, setSupabaseToken } from "../api/client";
 import { supabase, supabaseEnabled } from "../lib/supabase";
 import type { User } from "../types";
 
@@ -23,6 +23,11 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   provider: "supabase" | "legacy";
+  /** Set when the API host cannot be reached at all, as opposed to reaching it
+   *  and being told we are not signed in. Those look identical to a user
+   *  staring at a sign-in form that silently does nothing, so the difference is
+   *  surfaced rather than swallowed. */
+  apiReachable: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -34,19 +39,36 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [apiReachable, setApiReachable] = useState(true);
 
   /** Fetch the application profile. The Supabase session establishes WHO the
    *  user is; the profile row carries what this product knows about them. */
   const loadProfile = useCallback(async () => {
     try {
       setUser(await api.get<User>("/auth/me"));
+      setApiReachable(true);
     } catch (err) {
       if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
         setUser(null);
+        setApiReachable(true);   // the server answered; it just said no
+        return;
       }
-      // A transient failure (backend restart, proxy hiccup) must not look like
-      // a sign-out — the session is still valid.
+      // status 0 = no HTTP response at all: wrong VITE_API_BASE_URL, API not
+      // deployed, CORS refusal, or the host is down.
+      if (isNetworkError(err)) setApiReachable(false);
+      // A transient failure must not look like a sign-out — the session is
+      // still valid.
     }
+  }, []);
+
+  /* Probe once on load so a signed-out visitor also learns the API is down,
+     instead of finding out when the sign-in button does nothing. */
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/health")
+      .then(() => { if (!cancelled) setApiReachable(true); })
+      .catch((err) => { if (!cancelled && isNetworkError(err)) setApiReachable(false); });
+    return () => { cancelled = true; };
   }, []);
 
   /* --- Supabase --------------------------------------------------------- */
@@ -159,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user, loading, provider: supabaseEnabled ? "supabase" : "legacy",
+        user, loading, apiReachable, provider: supabaseEnabled ? "supabase" : "legacy",
         login, register, logout, requestPasswordReset,
       }}
     >

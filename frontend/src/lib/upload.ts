@@ -1,5 +1,5 @@
 import * as tus from "tus-js-client";
-import { api, getToken } from "../api/client";
+import { api, apiUrl, getToken } from "../api/client";
 import { SUPABASE_URL, currentAccessToken, supabaseEnabled } from "./supabase";
 
 /* ==========================================================================
@@ -217,7 +217,7 @@ async function startPutUpload(ticket: UploadTicket, opts: StartUploadOptions): P
       if (paused) return;
       const end = Math.min(offset + PUT_CHUNK_BYTES, opts.file.size);
       const chunk = opts.file.slice(offset, end);
-      const res = await fetch(`/api/v1${ticket.endpoint.replace("/api/v1", "")}`, {
+      const res = await fetch(apiUrl(ticket.endpoint.replace(/^\/api\/v1/, "")), {
         method: "PUT",
         signal: controller.signal,
         headers: {

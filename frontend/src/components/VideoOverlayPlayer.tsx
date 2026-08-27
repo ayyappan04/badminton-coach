@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, getToken } from "../api/client";
+import { api, getToken, resolveApiUrl } from "../api/client";
 import type { Video, PlaybackSource } from "../types";
 
 const SAMPLE_FPS = 10; // must match backend FRAME_SAMPLE_FPS (app/core/config.py)
@@ -151,7 +151,7 @@ export function VideoOverlayPlayer({ video, seekTo }: { video: Video; seekTo: nu
 
   const src = source
     ? (source.requires_token_query
-        ? `${source.url}${source.url.includes("?") ? "&" : "?"}token=${encodeURIComponent(getToken() || "")}`
+        ? `${resolveApiUrl(source.url)}${source.url.includes("?") ? "&" : "?"}token=${encodeURIComponent(getToken() || "")}`
         : source.url)
     : undefined;
 
