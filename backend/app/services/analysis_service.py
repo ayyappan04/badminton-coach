@@ -24,9 +24,13 @@ from app.models.video import Video, Calibration, TrackedPerson
 from app.models.analysis import PoseFrame, ShuttleFrame, Rally, Shot, CoachingInsight, MatchAnalytics
 from app.models.coaching_content import Drill
 from app.models.profile import PlayerProfile, ProfileHistorySnapshot
-from app.services.cv_pipeline.pipeline import run_pipeline, PIPELINE_VERSION
+# Only the light modules are imported eagerly. `run_pipeline` pulls in OpenCV
+# and MediaPipe, and `court_detection` pulls in OpenCV — about 250 MB of
+# resident memory. The API process imports this module for its DB-reading
+# helpers and never runs a pipeline, so those imports happen inside the
+# functions that actually need them.
+from app.services.cv_pipeline.version import PIPELINE_VERSION
 from app.services.cv_pipeline import rally_phases, court_geometry
-from app.services.cv_pipeline.court_detection import pixel_to_court
 from app.services.cv_pipeline.types import PipelineResult
 from app.services.coaching import insight_generator
 from app.services.tactics import match_analytics as analytics_engine
@@ -113,6 +117,10 @@ def process_video(video_id: str, source_path: Optional[str] = None,
             db.commit()
             if progress_cb:
                 progress_cb(pct, stage)
+
+        # Imported here, not at module scope: this is the only place the CV
+        # stack is needed, and the API process must not pay for it.
+        from app.services.cv_pipeline.pipeline import run_pipeline
 
         media_path = source_path or video.storage_path
         try:
@@ -309,6 +317,8 @@ def court_positions_from_db(db: Session, video_id: str, tp: TrackedPerson) -> Li
     homography, _ = homography_from_db(db, video_id)
     if homography is None:
         return []
+    from app.services.cv_pipeline.court_detection import pixel_to_court
+
     positions = []
     for b in (tp.bounding_boxes or []):
         try:
@@ -417,6 +427,8 @@ def _court_positions_for_track(result: PipelineResult, track_id: int) -> List[Di
         return []
     positions = []
     from app.core.config import FRAME_SAMPLE_FPS
+    from app.services.cv_pipeline.court_detection import pixel_to_court
+
     for box in track.boxes:
         try:
             x, y = pixel_to_court(result.calibration.homography, box.x + box.w / 2, box.y + box.h)

@@ -17,8 +17,9 @@ from app.models.video import Video, Calibration, TrackedPerson
 from app.models.analysis import Rally, Shot, CoachingInsight, MatchAnalytics
 from app.models.corrections import UserCorrection
 from app.services import analysis_service
-from app.services.cv_pipeline.overlay import build_overlay_manifest
-from app.services.cv_pipeline.court_detection import solve_homography_from_corners
+# `overlay` and `court_detection` pull in OpenCV. They are needed by exactly
+# two endpoints, so they are imported inside those handlers rather than costing
+# every API process ~250 MB of resident memory at startup.
 from app.services.coaching.technique_scores import compute_technique_scores
 from app.services import deletion_service, events as events_service, upload_service, video_state as vs
 from app.storage import get_storage
@@ -501,6 +502,7 @@ def list_insights(video_id: str, current_user: User = Depends(get_current_user),
 @router.get("/{video_id}/overlay-manifest")
 def overlay_manifest(video_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Rebuilt from persisted rows so overlays survive server restarts."""
+    from app.services.cv_pipeline.overlay import build_overlay_manifest
     from app.services.cv_pipeline.types import CalibrationResult, ShuttlePoint
     from app.models.analysis import ShuttleFrame
 
@@ -669,6 +671,8 @@ def correct_calibration(video_id: str, payload: CalibrationCorrection,
     cal = db.query(Calibration).filter_by(video_id=video.id).first()
     if not cal:
         raise HTTPException(status_code=404, detail="No calibration exists to correct.")
+
+    from app.services.cv_pipeline.court_detection import solve_homography_from_corners
 
     homography = solve_homography_from_corners(payload.court_corners_px)
     cal.method = "manual"

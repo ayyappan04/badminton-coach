@@ -13,7 +13,9 @@ from app.services.cv_pipeline import (
 )
 from app.services.cv_pipeline.types import PipelineResult, PoseSample
 
-PIPELINE_VERSION = "2.0.0"
+# Defined in `version` so the API can read it without importing OpenCV
+# and MediaPipe. Re-exported here because every pipeline caller expects it.
+from app.services.cv_pipeline.version import PIPELINE_VERSION  # noqa: F401
 
 
 def run_pipeline(video_path: str, progress_cb: Optional[Callable[[int, str], None]] = None) -> PipelineResult:

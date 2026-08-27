@@ -150,7 +150,19 @@ for a background process. `deploy/vm/` makes it close to turnkey.
 **Render is the fastest to a working URL**, and free if you run the worker
 locally. Start here if you want it working today.
 
-### Option A — Render (simplest)
+### Option A — Render (simplest, free)
+
+The API is a control plane: it authorizes uploads, reads results and enqueues
+jobs. No video byte passes through it, so it fits the free instance type with
+room to spare — **85 MB resident against a 512 MB cap**.
+
+That is only true because the CV stack is imported lazily. Importing
+`app.main` used to pull in OpenCV, MediaPipe, matplotlib and Pillow — 374 MB
+in a process that never decodes a frame, and 73% of the free tier before a
+single request. `run_pipeline` and `court_detection` are now imported inside
+the two functions that need them, so the worker still gets them on demand and
+the API never pays for them.
+
 
 `render.yaml` at the repo root defines both services. Render prompts once for
 the secrets and never stores them in the file.
