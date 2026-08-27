@@ -137,10 +137,10 @@ def ready():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         checks["database"] = True
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         logger.warning("readiness: database unreachable", exc_info=True)
         checks["database"] = False
-        reasons["database"] = "cannot connect; check DATABASE_URL"
+        reasons["database"] = _database_hint(exc)
 
     try:
         storage = get_storage()
@@ -175,6 +175,40 @@ def ready():
             "auth_mode": config.AUTH_MODE,
         },
     )
+
+
+def _database_hint(exc: Exception) -> str:
+    """Turn a connection failure into something actionable.
+
+    "Network is unreachable" against an IPv6 literal is the single most common
+    Supabase deployment failure: the DIRECT connection (db.<ref>.supabase.co)
+    resolves to IPv6 only, and most managed hosts — Render's free tier
+    included — have no IPv6 egress. The fix is a pooler hostname, and nothing
+    in the raw error says so.
+    """
+    text = str(exc)
+    lowered = text.lower()
+
+    if "network is unreachable" in lowered or "no route to host" in lowered:
+        return (
+            "cannot reach the database host. Supabase's DIRECT connection "
+            "(db.<ref>.supabase.co) is IPv6-only and most hosts have no IPv6 "
+            "egress. Use a POOLER connection string instead: "
+            "aws-0-<region>.pooler.supabase.com — port 6543 for this API, "
+            "port 5432 (session mode) for the worker."
+        )
+    if "password authentication failed" in lowered:
+        return "the database password in DATABASE_URL is wrong."
+    if "does not exist" in lowered and "database" in lowered:
+        return "that database name does not exist; check the end of DATABASE_URL."
+    if "timeout" in lowered or "timed out" in lowered:
+        return "the database did not answer in time; check the host and any IP allow-list."
+    if "psycopg2" in lowered:
+        return (
+            "DATABASE_URL asked for the psycopg2 driver, which is not installed. "
+            "Use postgresql:// or postgresql+psycopg:// — both are accepted."
+        )
+    return f"cannot connect; check DATABASE_URL ({type(exc).__name__})"
 
 
 @app.get("/api/v1/metrics")

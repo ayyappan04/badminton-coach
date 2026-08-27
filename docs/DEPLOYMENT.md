@@ -67,6 +67,35 @@ You want Python 3.12, uid 1001 (**not** root), and ffmpeg present.
 
 ---
 
+## Which Supabase connection string to use
+
+Supabase offers three, and the choice matters more than it looks. Find them
+behind the **Connect** button at the top of the project, or under
+**Project Settings → Database**.
+
+| | Host | Port | Use for |
+|---|---|---|---|
+| **Direct** | `db.<ref>.supabase.co` | 5432 | **nothing, usually** |
+| **Transaction pooler** | `aws-0-<region>.pooler.supabase.com` | 6543 | the **API** |
+| **Session pooler** | `aws-0-<region>.pooler.supabase.com` | 5432 | the **worker**, and migrations |
+
+The direct connection resolves to **IPv6 only**. Most managed hosts — Render's
+free tier included — have no IPv6 egress, so it fails with:
+
+```
+connection to server at "2600:1f14:...", port 5432 failed: Network is unreachable
+```
+
+Nothing in that message mentions IPv6 or pooling, which is why it wastes an
+afternoon. `/api/v1/ready` now recognises it and says so directly.
+
+**Why the worker wants the session pooler rather than the transaction pooler:**
+transaction mode returns the connection after every statement, which breaks
+long transactions and the advisory state pgmq relies on. Session mode behaves
+like a direct connection but over IPv4.
+
+---
+
 ## 2 · Apply the database schema
 
 Alembic owns the domain schema and **must run before any worker starts**. A
