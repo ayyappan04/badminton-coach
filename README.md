@@ -266,7 +266,7 @@ backend/app/
     usage_service · video_state · events · pipeline_artifacts
   main.py      manage.py (ops CLI)
 backend/alembic/    domain schema migrations
-backend/tests/      241 tests + live smoke + two video matrices
+backend/tests/      248 tests + live smoke + two video matrices
 supabase/migrations/  RLS · storage buckets/policies · pgmq · Realtime
 frontend/src/
   ui/            design tokens + primitives
@@ -416,7 +416,7 @@ pipeline performs is verified working on it, including rotation baking.
 ```bash
 cd backend && source .venv/bin/activate
 
-python -m pytest tests/ -q                 # 241 tests
+python -m pytest tests/ -q                 # 248 tests
 python -m pytest -m "not integration" -q   # fast subset (skips the CV end-to-end)
 uvicorn app.main:app --port 8131 &         # then, in another shell:
 python -m tests.smoke_live                 # 35 live end-to-end checks
@@ -448,6 +448,7 @@ npx tsc -b --noEmit && npm run lint && npm audit && npm run build
 | `test_production_isolation.py` | Cross-user denial across 16 endpoints, coach grant/revoke, two-phase deletion, service-key containment in the client bundle |
 | `test_e2e_pipeline.py` | Account → upload → queue → worker → results → signed playback → delete, driving the real worker loop |
 | `test_storage_efficiency.py` | Pose landmarks resolve from artifact or rows transparently, fall back to Postgres when the artifact fails, and the result cache stays bounded |
+| `test_vercel_config.py` | `vercel.json` schema validity, and that the SPA rewrite does not swallow `/api/*` |
 
 **CI:** `docs/ci/ci.yml` runs tests, pip-audit, bandit, typecheck, lint, npm
 audit, build, and a gitleaks scan. It lives under `docs/` because the push

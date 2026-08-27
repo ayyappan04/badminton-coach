@@ -9,7 +9,6 @@
   },
   "rewrites": [
     {
-      "//": "SPA history fallback. `api/` is excluded deliberately: without it this catch-all answers /api/v1/* with index.html and a 200, so a missing backend looks like a successful request that returns HTML -- every API call then fails as a JSON parse error instead of saying the API is unreachable.",
       "source": "/((?!api/|assets/).*)",
       "destination": "/index.html"
     }

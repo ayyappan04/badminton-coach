@@ -189,6 +189,27 @@ a variable without rebuilding changes nothing.
 
 ---
 
+### A note on `vercel.json`
+
+It is validated against a strict schema **before** the build runs, and unknown
+properties fail the deployment with *no build logs at all* — which looks
+alarming and tells you nothing. Two consequences:
+
+- Never add a `"//"` key as a pseudo-comment. Reasoning belongs here instead.
+- The SPA rewrite must exclude `api/`:
+
+  ```
+  "source": "/((?!api/|assets/).*)"
+  ```
+
+  A true catch-all answers `/api/v1/*` with `index.html` and a **200**, so a
+  missing backend looks like a working one returning HTML, and every API call
+  fails as a JSON parse error at a call site that appears successful.
+
+`backend/tests/test_vercel_config.py` asserts both.
+
+---
+
 ## 5 · Make the site reachable
 
 New Vercel projects enable **Deployment Protection**, which is why the URL
@@ -249,6 +270,8 @@ python manage.py capacity     # realtime_factor, for sizing the fleet
 | Symptom | Cause | Fix |
 |---|---|---|
 | Vercel build runs `react-scripts` | Stale CRA framework preset | Already fixed by the root `vercel.json`; it overrides Project Settings |
+| Deployment fails with **no build logs at all** | `vercel.json` failed schema validation before the build started | Vercel rejects unknown properties. JSON has no comments — never add a `"//"` key. `pytest tests/test_vercel_config.py` catches this |
+| `/api/*` returns HTML with a 200 | SPA catch-all rewrite swallowing API paths | The rewrite must exclude `api/`: `/((?!api/\|assets/).*)` |
 | Site 302s to `vercel.com/sso-api` | Deployment Protection | §5 |
 | Banner: "Can't reach the ShuttleSense API" | `VITE_API_BASE_URL` unset/wrong, or CORS | Set it, redeploy, add the Vercel origin to `CORS_ORIGINS` |
 | Browser console: CORS error | API doesn't list the Vercel origin | `CORS_ORIGINS` must match exactly — scheme, host, no trailing slash |
