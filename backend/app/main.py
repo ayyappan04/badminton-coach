@@ -158,6 +158,25 @@ def ready():
     checks = {}
     reasons = {}
 
+    # A readiness probe must not make an outage worse. Supabase's pooler trips
+    # a circuit breaker after repeated authentication failures, and polling
+    # /ready during an incident was feeding it -- every check retried the
+    # connection and added to the count. Failures are cached briefly so
+    # repeated polls report the known state instead of re-attacking the
+    # dependency. Successes are never cached.
+    cached = _cached_failure()
+    if cached is not None:
+        checks.update(cached["checks"])
+        reasons.update(cached["reasons"])
+        reasons["_note"] = f"cached for {_FAILURE_CACHE_S}s to avoid hammering a failing dependency"
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "checks": checks, "reasons": reasons,
+                     "storage_backend": config.STORAGE_BACKEND,
+                     "job_backend": config.JOB_BACKEND,
+                     "auth_mode": config.AUTH_MODE},
+        )
+
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -203,6 +222,8 @@ def ready():
         reasons["configuration"] = "; ".join(misconfigured)
 
     ok = all(checks.values()) and not misconfigured
+    if not ok:
+        _remember_failure(checks, reasons)
     return JSONResponse(
         status_code=200 if ok else 503,
         content={
@@ -216,6 +237,26 @@ def ready():
             "auth_mode": config.AUTH_MODE,
         },
     )
+
+
+# Readiness failures are cached for this long. Short enough to notice a fix
+# quickly, long enough that polling cannot sustain load on a broken dependency.
+_FAILURE_CACHE_S = 20
+_failure_cache: dict = {}
+
+
+def _cached_failure():
+    import time
+    entry = _failure_cache.get("last")
+    if entry and (time.monotonic() - entry["at"]) < _FAILURE_CACHE_S:
+        return entry
+    return None
+
+
+def _remember_failure(checks: dict, reasons: dict) -> None:
+    import time
+    _failure_cache["last"] = {"at": time.monotonic(), "checks": dict(checks),
+                              "reasons": dict(reasons)}
 
 
 def _database_hint(exc: Exception) -> str:
@@ -237,6 +278,14 @@ def _database_hint(exc: Exception) -> str:
             "egress. Use a POOLER connection string instead: "
             "aws-0-<region>.pooler.supabase.com — port 6543 for this API, "
             "port 5432 (session mode) for the worker."
+        )
+    if "ecircuitbreaker" in lowered or "temporarily blocked" in lowered:
+        return (
+            "Supabase's pooler has temporarily blocked new connections after "
+            "repeated authentication failures. The credentials you have NOW may "
+            "be correct — this is a cooldown from earlier attempts. Fix "
+            "DATABASE_URL if it is still wrong, then wait a few minutes; it "
+            "clears on its own."
         )
     if "password authentication failed" in lowered:
         # Against a pooler this usually is NOT the password. The pooler is

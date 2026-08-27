@@ -98,6 +98,10 @@ if not RESOLVED_DATABASE_URL.startswith("sqlite"):
     # reconnect.
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_recycle"] = 1800
+    # Without a connect timeout a blocked pooler ties up the caller until the
+    # OS gives up, which on a readiness probe means the probe itself times out
+    # and says nothing useful.
+    engine_kwargs["connect_args"] = {**connect_args, "connect_timeout": 10}
 
 engine = create_engine(RESOLVED_DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
