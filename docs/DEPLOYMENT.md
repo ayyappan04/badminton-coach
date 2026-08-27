@@ -140,7 +140,7 @@ the secrets and never stores them in the file.
    | Variable | Value |
    |---|---|
    | `SUPABASE_URL` | `https://<ref>.supabase.co` |
-   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → `service_role` |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → **API Keys** → *Secret keys* → `default` → Reveal |
    | `DATABASE_URL` | pooler string, port **6543**, for the API |
    | `CORS_ORIGINS` | your Vercel URL, exactly, no trailing slash |
 
@@ -303,6 +303,35 @@ python manage.py capacity     # realtime_factor, for sizing the fleet
 
 Full runbook: **[OPERATIONS.md](OPERATIONS.md)**.
 Architecture and rationale: **[PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md)**.
+
+---
+
+## What has been verified against live infrastructure
+
+Not claims — measured against the real Supabase project.
+
+| Path | Result |
+|---|---|
+| Secret key authenticates to Storage | ✅ both key formats work (`sb_secret_…` and legacy `service_role` JWT) |
+| Buckets are private | ✅ all three, with correct size limits |
+| Upload / stat / download / delete | ✅ byte-identical round trip, checksum verified |
+| Signed read URL | ✅ 200 while valid |
+| Signed URL **expires** | ✅ 400 after the TTL elapses |
+| Unsigned public fetch | ✅ **refused** — the bucket really is private |
+| **TUS resumable upload** | ✅ create → partial chunk → **resume from the server-reported offset** → byte-identical result |
+| RLS cross-user isolation | ✅ user A cannot read user B's rows, or write their own pipeline fields |
+| Storage path enforcement | ✅ own-prefix write allowed, foreign-prefix write refused |
+| pgmq claim / lease / redelivery | ✅ second worker blocked while the lease holds; reclaimed after it expires |
+| Container image on Python 3.12 | ✅ 236 tests pass inside it |
+
+The resume test matters most: it sends half a file, reads the offset the server
+reports, then continues from it in a fresh request — exactly what
+`tus-js-client` does after a dropped connection. That is the behaviour the
+whole large-upload design rests on.
+
+**Still unverified:** the worker consuming pgmq over the public internet, which
+needs `DATABASE_URL` (the database password). Everything it depends on is
+verified individually; the composition is not.
 
 ---
 
