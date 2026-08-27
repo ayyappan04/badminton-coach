@@ -15,25 +15,14 @@ export default defineConfig({
       '/api': { target: API_TARGET, changeOrigin: true },
     },
   },
-  build: {
-    // Recharts is the single heaviest dependency and is only reachable from
-    // the Progress route. Splitting it out keeps it off the critical path for
-    // a signed-out visitor.
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
-            return 'charts'
-          }
-          // tus is only reachable from the upload flow on the Matches route.
-          // supabase-js is deliberately NOT split out: the auth session is
-          // read on first paint, so a separate request for it would just add a
-          // round trip to the critical path.
-          if (id.includes('node_modules/tus-js-client')) {
-            return 'tus'
-          }
-        },
-      },
-    },
-  },
+  // No manualChunks. An earlier attempt forced recharts into a named `charts`
+  // chunk, which pulled it into the ENTRY's static graph -- Vite then emitted
+  // a <link rel="modulepreload"> for it, so every visitor downloaded 387 kB of
+  // charting library before seeing the landing page. That is the opposite of
+  // what the split was for.
+  //
+  // Vite's automatic splitting already does the right thing: the lazy route
+  // imports in App.tsx are the async boundary, and recharts lands inside the
+  // Profile chunk where it belongs. Verified by checking index.html emits no
+  // modulepreload at all.
 })
