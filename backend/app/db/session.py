@@ -34,6 +34,37 @@ def normalize_database_url(url: str) -> str:
     return url
 
 
+#: Placeholder text that dashboards and templates leave in connection strings.
+#: Pasting one of these authenticates with the literal text, which reads as a
+#: wrong password — and on Supabase's pooler, repeated attempts trip a circuit
+#: breaker whose error then blames authentication rather than the placeholder.
+_PLACEHOLDER_MARKERS = (
+    "[your-password]", "[password]", "<your-password>", "<password>",
+    "your-password", "yourpassword", "your_password", "[db-password]",
+    "changeme", "replace-me", "xxxxx",
+)
+
+
+def placeholder_in_url(url: str) -> str:
+    """The placeholder left in a connection string, or "" if there is none.
+
+    Only the password segment is examined, so a database legitimately named
+    `changeme` is not flagged.
+    """
+    if not url or "://" not in url or "@" not in url:
+        return ""
+    _, _, rest = url.partition("://")
+    credentials, _, _ = rest.rpartition("@")
+    _, sep, password = credentials.partition(":")
+    if not sep:
+        return ""
+    lowered = password.lower()
+    for marker in _PLACEHOLDER_MARKERS:
+        if marker in lowered:
+            return marker
+    return ""
+
+
 def qualify_pooler_username(url: str, supabase_url: str = "") -> str:
     """Add the project ref to the username when connecting through the pooler.
 
@@ -85,6 +116,18 @@ from app.core.config import SUPABASE_URL as _SUPABASE_URL  # noqa: E402
 RESOLVED_DATABASE_URL = qualify_pooler_username(
     normalize_database_url(DATABASE_URL), _SUPABASE_URL
 )
+
+DATABASE_URL_PLACEHOLDER = placeholder_in_url(RESOLVED_DATABASE_URL)
+if DATABASE_URL_PLACEHOLDER:
+    import sys as _sys
+    print(
+        f"[db] DATABASE_URL still contains the placeholder "
+        f"'{DATABASE_URL_PLACEHOLDER}' where the password belongs. Every "
+        "connection will fail as an authentication error, and Supabase's "
+        "pooler will eventually block new connections entirely. Substitute the "
+        "real database password.",
+        file=_sys.stderr,
+    )
 
 connect_args = (
     {"check_same_thread": False} if RESOLVED_DATABASE_URL.startswith("sqlite") else {}

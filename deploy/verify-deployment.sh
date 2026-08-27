@@ -110,6 +110,21 @@ if [[ -n "$ORIGIN" ]]; then
     || bad "Authorization header not permitted; every API call will fail"
 fi
 
+# --- configuration --------------------------------------------------------
+if [[ -n "$ready" ]]; then
+  cfg=$(python3 -c "
+import json,sys
+try:
+    print((json.loads(sys.argv[1]).get('reasons') or {}).get('configuration',''))
+except Exception:
+    pass" "$ready" 2>/dev/null)
+  if [[ -n "$cfg" ]]; then
+    echo
+    echo "Configuration"
+    bad "$cfg"
+  fi
+fi
+
 # --- security headers -----------------------------------------------------
 echo
 echo "Security headers"

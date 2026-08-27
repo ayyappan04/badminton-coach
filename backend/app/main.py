@@ -209,6 +209,12 @@ def ready():
     # several values and it is easy to leave one blank; the resulting failure
     # appears somewhere unrelated and much later.
     misconfigured = []
+    from app.db.session import DATABASE_URL_PLACEHOLDER
+    if DATABASE_URL_PLACEHOLDER:
+        misconfigured.append(
+            f"DATABASE_URL still contains the placeholder "
+            f"'{DATABASE_URL_PLACEHOLDER}' instead of the real password"
+        )
     if config.STORAGE_BACKEND == "supabase":
         if not config.SUPABASE_URL:
             misconfigured.append("SUPABASE_URL is empty but STORAGE_BACKEND=supabase")

@@ -199,3 +199,32 @@ def test_pooler_qualification_preserves_password_punctuation():
     assert out.endswith("@aws-0-eu-west-1.pooler.supabase.com:6543/postgres")
     # Everything after the first colon is the password, untouched.
     assert ":p%40ss:word%2F@" in out
+
+
+def test_placeholder_password_is_detected():
+    """A connection string pasted straight from a dashboard keeps its
+    `[YOUR-PASSWORD]` placeholder. Every connection then fails as an
+    authentication error, and on Supabase's pooler repeated attempts trip a
+    circuit breaker whose message blames authentication — sending you to check
+    the password, which is exactly the part you never set."""
+    from app.db.session import placeholder_in_url as f
+
+    flagged = [
+        "postgresql://postgres.abc:[YOUR-PASSWORD]@aws-1-us-west-2.pooler.supabase.com:6543/postgres",
+        "postgresql://postgres:<password>@host:5432/postgres",
+        "postgresql://user:your-password@host:5432/db",
+        "postgresql://user:CHANGEME@host:5432/db",
+    ]
+    for url in flagged:
+        assert f(url), f"placeholder not detected in {url}"
+
+    clean = [
+        "postgresql://postgres.abc:Tr0ub4dor-3@host:6543/postgres",
+        "postgresql://postgres:p%40ssw0rd@host:5432/postgres",
+        # Only the password is examined, so a database named `changeme` is fine.
+        "postgresql://postgres:realpw@host:5432/changeme",
+        "sqlite:///./app.db",
+        "",
+    ]
+    for url in clean:
+        assert not f(url), f"false positive on {url}"
