@@ -29,7 +29,15 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
-    url = os.environ.get("DATABASE_URL", "")
+    """DATABASE_URL, normalised the same way the application normalises it.
+
+    Without this, `alembic upgrade head` fails with `No module named
+    'psycopg2'` on the exact connection string the dashboard hands you, while
+    the app itself works — a maddening inconsistency.
+    """
+    from app.db.session import normalize_database_url
+
+    url = normalize_database_url(os.environ.get("DATABASE_URL", ""))
     if not url:
         raise SystemExit(
             "DATABASE_URL is not set. Point it at the target database, e.g.\n"

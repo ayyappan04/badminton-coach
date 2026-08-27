@@ -174,7 +174,7 @@ the secrets and never stores them in the file.
    |---|---|
    | `SUPABASE_URL` | `https://<ref>.supabase.co` |
    | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → **API Keys** → *Secret keys* → `default` → Reveal |
-   | `DATABASE_URL` | pooler string, port **6543**, for the API |
+   | `DATABASE_URL` | pooler string, port **6543**, exactly as Supabase gives it |
    | `CORS_ORIGINS` | your Vercel URL, exactly, no trailing slash |
 
 3. Deploy. The API gets a URL; the worker has no ingress, by design.

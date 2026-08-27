@@ -120,3 +120,41 @@ def test_alembic_config_holds_no_connection_string():
         if stripped.startswith("sqlalchemy.url") and "=" in stripped:
             value = stripped.split("=", 1)[1].strip()
             assert not value, f"alembic.ini pins a connection string: {value}"
+
+
+# --- connection-string handling ------------------------------------------
+
+def test_database_url_normalisation():
+    """Every managed Postgres hands out `postgresql://`, which SQLAlchemy maps
+    to psycopg2 — a driver this project does not ship. The first production
+    deploy died on exactly that."""
+    from app.db.session import normalize_database_url as norm
+
+    # What Supabase actually gives you.
+    assert norm("postgresql://postgres:pw@db.abc.supabase.co:5432/postgres") == \
+        "postgresql+psycopg://postgres:pw@db.abc.supabase.co:5432/postgres"
+
+    # The legacy alias SQLAlchemy rejects outright.
+    assert norm("postgres://user:pw@host:5432/db") == \
+        "postgresql+psycopg://user:pw@host:5432/db"
+
+    # An explicit driver is always respected.
+    for explicit in ("postgresql+psycopg://u:p@h/d",
+                     "postgresql+asyncpg://u:p@h/d",
+                     "postgresql+psycopg2://u:p@h/d"):
+        assert norm(explicit) == explicit
+
+    # Non-Postgres URLs pass through untouched.
+    assert norm("sqlite:///./app.db") == "sqlite:///./app.db"
+    assert norm("") == ""
+
+
+def test_password_special_characters_survive_normalisation():
+    """Supabase passwords routinely contain punctuation. Rewriting the scheme
+    must not disturb the rest of the URL."""
+    from app.db.session import normalize_database_url as norm
+
+    raw = "postgresql://postgres.abc:p%40ss-w0rd%2F%3F@aws-0.pooler.supabase.com:6543/postgres"
+    out = norm(raw)
+    assert out.startswith("postgresql+psycopg://")
+    assert out.endswith("p%40ss-w0rd%2F%3F@aws-0.pooler.supabase.com:6543/postgres")
