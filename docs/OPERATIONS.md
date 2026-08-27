@@ -149,6 +149,24 @@ FROM analysis_runs WHERE status IN ('pending','claimed','running') GROUP BY 1;
 
 ---
 
+## Sizing the worker fleet
+
+```bash
+python manage.py capacity
+```
+
+`realtime_factor` is compute-seconds per second of footage — the number that
+turns "we have N minutes of backlog" into "we need M workers". It is recorded
+per run, so `by_pipeline_version` also shows whether a release changed the cost
+of analysis.
+
+One worker sustains roughly `3600 / (p95 × average_match_seconds)` matches per
+hour. Scale out by adding worker containers; raising `WORKER_CONCURRENCY` makes
+concurrent pipelines contend for the same cores and the same frame-buffer
+budget, so they finish later than they would in sequence.
+
+---
+
 ## Reprocess a video
 
 Use the API so a new run is created and history is preserved:

@@ -206,12 +206,37 @@ Decided by access pattern, not by preference.
 | Video metadata, scores, status | bytes | queried, filtered, sorted | Postgres columns |
 | Match analytics aggregates | ~10–50 KB | read whole, occasionally probed by block name | **JSONB** + GIN index |
 | Rally phases, radar scores | ~1–5 KB | read whole | JSONB |
-| Pose landmarks per frame | 10s of MB | read whole, bulk-inserted | Postgres `JSON` (text) |
+| Pose landmarks per frame | 10s of MB | read whole, never by content | **object storage** (in the gzipped artifact) |
 | Full `PipelineResult` | 10s of MB gz | read whole, only on rehydration | **object storage** (`pipeline_result.json.gz`) |
 
-Only the columns that are actually *queried* were made JSONB. The per-frame
+Only the columns that are actually *queried* were made JSONB. The remaining
 bulk columns stay plain `JSON`: they are read whole and written in bulk, so
 binary conversion on insert would cost throughput for no query benefit.
+
+### Pose landmarks are not in Postgres
+
+`pose_frames` was the largest thing this system writes. At `POSE_SAMPLE_FPS=15`,
+a 40-minute doubles match is ~72,000 rows carrying 33 landmarks each — roughly
+**130 MB for one match**, or 133 GB per thousand matches, in a single table.
+
+Nothing queries them by content. Every consumer (`/scorecards`,
+`/overlay-manifest`, biomechanics) reads the entire sequence to rebuild one
+object. The same data inside the gzipped artifact is about **76x smaller**.
+
+So with `PERSIST_POSE_LANDMARKS=false` (the default), `pose_frames` keeps only
+the small queryable columns — `frame_index`, `timestamp_s`, `confidence`,
+`stance_label`, `balance_score` — and the landmarks live in
+`artifacts/pipeline_result.json.gz`.
+
+Two properties make that safe, and both are pinned by tests:
+
+- The artifact is published **before** the decision is made. If the upload
+  fails, the landmarks are written to Postgres after all, so the data always
+  exists somewhere.
+- `analysis_service.pose_samples_for()` resolves landmarks from the in-process
+  cache, then the artifact, then the rows. A consumer cannot tell which store
+  answered, so videos analyzed before the change keep working with no
+  migration.
 
 **Parquet was considered and not adopted.** It earns its keep on columnar
 selective reads over large datasets. Every consumer here reads the entire

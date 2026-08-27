@@ -12,6 +12,7 @@ reporter that is wrong once prints a wrong line. The asymmetry is the reason
     python manage.py retention [--apply]
     python manage.py stale-assets
     python manage.py queue [--depth] [--ensure]
+    python manage.py capacity [--limit 200]
     python manage.py usage --user ID [--recalculate]
     python manage.py purge-video --video ID --apply
     python manage.py delete-account --user ID --apply
@@ -140,6 +141,57 @@ def cmd_stale_assets(args) -> int:
     return 0
 
 
+def cmd_capacity(args) -> int:
+    """Measured throughput, for sizing the worker fleet.
+
+    Answers "how many workers do we need" from recorded runs rather than from
+    a guess, and shows whether a pipeline release changed the cost per minute
+    of footage.
+    """
+    from sqlalchemy import func
+    from app.db.session import SessionLocal
+    from app.models.runs import AnalysisRun, SUCCEEDED
+
+    with SessionLocal() as db:
+        runs = (
+            db.query(AnalysisRun)
+            .filter(AnalysisRun.status == SUCCEEDED, AnalysisRun.metrics.isnot(None))
+            .order_by(AnalysisRun.completed_at.desc())
+            .limit(args.limit).all()
+        )
+        factors, by_version = [], {}
+        for run in runs:
+            rf = (run.metrics or {}).get("realtime_factor")
+            if rf:
+                factors.append(rf)
+                by_version.setdefault(run.pipeline_version, []).append(rf)
+
+        pending = db.query(func.count(AnalysisRun.id)).filter(
+            AnalysisRun.status.in_(("pending", "claimed", "running"))).scalar()
+
+    if not factors:
+        _print({"note": "no completed runs with metrics yet", "pending_runs": pending})
+        return 0
+
+    ordered = sorted(factors)
+    p50 = ordered[len(ordered) // 2]
+    p95 = ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
+    _print({
+        "samples": len(ordered),
+        "realtime_factor": {"p50": round(p50, 3), "p95": round(p95, 3),
+                            "max": round(ordered[-1], 3)},
+        "by_pipeline_version": {
+            v: round(sum(f) / len(f), 3) for v, f in by_version.items()
+        },
+        "pending_runs": pending,
+        "note": (
+            "realtime_factor is compute-seconds per second of footage. "
+            "One worker sustains roughly 3600/(p95 * avg_match_seconds) matches per hour."
+        ),
+    })
+    return 0
+
+
 def cmd_queue(args) -> int:
     from app.jobs import get_dispatcher
 
@@ -237,6 +289,10 @@ def main() -> int:
     p.set_defaults(fn=cmd_retention)
 
     sub.add_parser("stale-assets", help="derived assets from an outdated transform").set_defaults(fn=cmd_stale_assets)
+
+    p = sub.add_parser("capacity", help="measured throughput, for sizing the worker fleet")
+    p.add_argument("--limit", type=int, default=200, help="how many recent runs to sample")
+    p.set_defaults(fn=cmd_capacity)
 
     p = sub.add_parser("queue", help="queue depth and health")
     p.add_argument("--ensure", action="store_true", help="create the queues if absent")

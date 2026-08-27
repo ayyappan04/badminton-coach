@@ -265,7 +265,7 @@ backend/app/
     usage_service · video_state · events · pipeline_artifacts
   main.py      manage.py (ops CLI)
 backend/alembic/    domain schema migrations
-backend/tests/      234 tests + live smoke + two video matrices
+backend/tests/      241 tests + live smoke + two video matrices
 supabase/migrations/  RLS · storage buckets/policies · pgmq · Realtime
 frontend/src/
   ui/            design tokens + primitives
@@ -407,7 +407,7 @@ followed by `pytest` inside the image is the remaining validation step.
 ```bash
 cd backend && source .venv/bin/activate
 
-python -m pytest tests/ -q                 # 234 tests
+python -m pytest tests/ -q                 # 241 tests
 python -m pytest -m "not integration" -q   # fast subset (skips the CV end-to-end)
 uvicorn app.main:app --port 8131 &         # then, in another shell:
 python -m tests.smoke_live                 # 35 live end-to-end checks
@@ -438,6 +438,7 @@ npx tsc -b --noEmit && npm run lint && npm audit && npm run build
 | `test_migrations.py` | Chain linearity, upgrade/downgrade round trip, model-vs-migration drift, offline SQL generation |
 | `test_production_isolation.py` | Cross-user denial across 16 endpoints, coach grant/revoke, two-phase deletion, service-key containment in the client bundle |
 | `test_e2e_pipeline.py` | Account → upload → queue → worker → results → signed playback → delete, driving the real worker loop |
+| `test_storage_efficiency.py` | Pose landmarks resolve from artifact or rows transparently, fall back to Postgres when the artifact fails, and the result cache stays bounded |
 
 **CI:** `docs/ci/ci.yml` runs tests, pip-audit, bandit, typecheck, lint, npm
 audit, build, and a gitleaks scan. It lives under `docs/` because the push

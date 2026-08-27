@@ -168,6 +168,19 @@ worker.receive(visibility_timeout = JOB_LEASE_S)
 unpredictable duration report their stage name; the percentage moves at real
 stage boundaries.
 
+**Per-frame pose landmarks go into the artifact, not into Postgres.** At
+`POSE_SAMPLE_FPS=15` a 40-minute match is ~72,000 rows and ~130 MB of JSON, and
+nothing ever queries them by content — so they live in the gzipped artifact,
+where the same data is ~76x smaller. `pose_frames` keeps the small queryable
+columns. The artifact is published before that decision is taken, so a failed
+upload falls back to writing them relationally and the data always exists
+somewhere. See `docs/DATA_MODEL.md`.
+
+**The in-process PipelineResult cache is bounded** (`PIPELINE_CACHE_MAX_ENTRIES`,
+default 8). Each entry is tens of megabytes; unbounded, a long-lived API
+process accumulates one per video it has ever served — the same OOM the frame
+budget prevents one level down.
+
 ## 6 · Failure recovery
 
 | Failure | What happens |

@@ -103,6 +103,22 @@ PROCESSING_TIMEOUT_S = int(os.environ.get("PROCESSING_TIMEOUT_S", 900))
 MAX_ANALYSIS_FRAME_BYTES = int(os.environ.get("MAX_ANALYSIS_FRAME_MB", 1200)) * 1024 * 1024
 MIN_ANALYSIS_FPS = 0.5   # hard floor; the byte budget wins above this
 
+# Per-frame pose landmarks are the single largest thing this system writes:
+# 33 landmarks x ~15 fps x 2 players x 40 minutes is ~72,000 rows and ~130 MB
+# of JSON for ONE match. They are never queried by content -- every consumer
+# reads the whole sequence to rebuild one object -- so they belong in the
+# gzipped analysis artifact, where the same data is ~76x smaller.
+#
+# When False, `pose_frames` keeps only the small queryable columns and the
+# landmarks live in object storage. Persistence is skipped ONLY if the artifact
+# was published successfully, so the data always exists somewhere.
+PERSIST_POSE_LANDMARKS = os.environ.get("PERSIST_POSE_LANDMARKS", "false").lower() == "true"
+
+# The in-process PipelineResult cache is a memory leak without a bound: each
+# entry is tens of megabytes and a long-lived API process would accumulate one
+# per video it has ever served.
+PIPELINE_CACHE_MAX_ENTRIES = int(os.environ.get("PIPELINE_CACHE_MAX_ENTRIES", 8))
+
 
 # ===========================================================================
 # PRODUCTION ARCHITECTURE (Vercel + Supabase)

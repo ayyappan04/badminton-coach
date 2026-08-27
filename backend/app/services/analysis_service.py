@@ -12,7 +12,10 @@ produce the same analysis whether or not the worker that ran the pipeline is
 the worker that finishes the job.
 """
 import traceback
+from collections import OrderedDict
 from typing import Dict, List, Optional
+
+from app.core import config
 
 from sqlalchemy.orm import Session
 
@@ -30,7 +33,59 @@ from app.services.tactics import match_analytics as analytics_engine
 from app.services.tactics import doubles_rotation
 from app.services.profiling import player_profile_builder as profiler
 
-_pipeline_cache: Dict[str, PipelineResult] = {}
+class _BoundedCache:
+    """LRU cache for PipelineResults.
+
+    Each entry is tens of megabytes. Unbounded, a long-lived API process
+    accumulates one per video it has ever served and eventually OOMs -- the
+    same failure mode the frame-budget work fixed inside the pipeline.
+
+    Wraps an OrderedDict rather than subclassing it: overriding __getitem__ on
+    a subclass makes eviction recurse back through the override.
+    """
+
+    def __init__(self, max_entries: int):
+        self._data: "OrderedDict[str, PipelineResult]" = OrderedDict()
+        self.max_entries = max(1, max_entries)
+
+    def get(self, key, default=None):
+        if key not in self._data:
+            return default
+        self._data.move_to_end(key)
+        return self._data[key]
+
+    def __getitem__(self, key):
+        value = self.get(key)
+        if value is None:
+            raise KeyError(key)
+        return value
+
+    def __setitem__(self, key, value) -> None:
+        self._data[key] = value
+        self._data.move_to_end(key)
+        while len(self._data) > self.max_entries:
+            self._data.popitem(last=False)
+
+    def __contains__(self, key) -> bool:
+        return key in self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def pop(self, key, default=None):
+        return self._data.pop(key, default)
+
+    def keys(self):
+        return self._data.keys()
+
+    def values(self):
+        return self._data.values()
+
+    def clear(self) -> None:
+        self._data.clear()
+
+
+_pipeline_cache: "_BoundedCache" = _BoundedCache(config.PIPELINE_CACHE_MAX_ENTRIES)
 _track_id_map_cache: Dict[str, Dict[int, str]] = {}  # video_id -> {raw_track_id: tracked_person.id}
 
 
@@ -79,10 +134,14 @@ def process_video(video_id: str, source_path: Optional[str] = None,
             video.quality_report = result.quality
 
         video.analysis_confidence = _overall_confidence(result)
-
         _pipeline_cache[video_id] = result
-        _persist_pipeline_result(db, video, result)
-        _publish_artifact(video, result, workdir)
+
+        # Publish FIRST, then decide whether the landmarks still need a row
+        # each. Skipping persistence on the assumption an upload succeeded
+        # would lose the data outright if it did not.
+        artifact_published = _publish_artifact(video, result, workdir)
+        store_landmarks = config.PERSIST_POSE_LANDMARKS or not artifact_published
+        _persist_pipeline_result(db, video, result, store_landmarks=store_landmarks)
 
         if len(result.tracks) == 1:
             # unambiguous — auto-assign the only detected person as "self"
@@ -101,7 +160,14 @@ def process_video(video_id: str, source_path: Optional[str] = None,
         db.close()
 
 
-def _persist_pipeline_result(db: Session, video: Video, result: PipelineResult) -> None:
+def _persist_pipeline_result(db: Session, video: Video, result: PipelineResult,
+                             store_landmarks: bool = True) -> None:
+    """Write CV output to relational rows.
+
+    `store_landmarks=False` keeps the small queryable pose columns and leaves
+    the 33-landmark payload in the gzipped artifact. Callers must only pass
+    False once that artifact is confirmed published.
+    """
     cal = result.calibration
     db.add(Calibration(
         video_id=video.id, method=cal.method,
@@ -128,7 +194,9 @@ def _persist_pipeline_result(db: Session, video: Video, result: PipelineResult) 
             continue
         db.add(PoseFrame(
             tracked_person_id=tp_id, video_id=video.id, frame_index=pose.frame_index,
-            timestamp_s=pose.timestamp_s, landmarks=pose.landmarks, confidence=pose.confidence,
+            timestamp_s=pose.timestamp_s,
+            landmarks=pose.landmarks if store_landmarks else [],
+            confidence=pose.confidence,
         ))
 
     for sp in result.shuttle_points:
@@ -193,13 +261,47 @@ def homography_from_db(db: Session, video_id: str):
 
 
 def pose_samples_from_db(db: Session, tp: TrackedPerson):
+    """Pose samples reconstructed from relational rows alone.
+
+    Returns empty landmark lists for videos analyzed with
+    PERSIST_POSE_LANDMARKS=false. Prefer `pose_samples_for`, which resolves
+    them from whichever store actually holds them.
+    """
     from app.services.cv_pipeline.types import PoseSample
     rows = db.query(PoseFrame).filter_by(tracked_person_id=tp.id).order_by(PoseFrame.frame_index).all()
     return [
         PoseSample(track_id=tp.track_id, frame_index=r.frame_index, timestamp_s=r.timestamp_s,
-                   landmarks=r.landmarks, confidence=r.confidence)
+                   landmarks=r.landmarks or [], confidence=r.confidence)
         for r in rows
     ]
+
+
+def pose_samples_for(db: Session, video: Video, tp: TrackedPerson):
+    """Pose samples WITH landmarks, from wherever they live.
+
+    Landmarks are ~76x cheaper in the gzipped artifact than as one JSON column
+    per frame, so new analyses keep them there. This accessor hides that: it
+    tries the in-process cache, then the artifact, then falls back to the rows
+    themselves for videos analyzed before the change.
+    """
+    cached = _pipeline_cache.get(video.id) or _rehydrate(video)
+    if cached is not None:
+        samples = [p for p in cached.poses if p.track_id == tp.track_id]
+        if samples:
+            return sorted(samples, key=lambda p: p.frame_index)
+
+    rows = pose_samples_from_db(db, tp)
+    if any(r.landmarks for r in rows):
+        return rows
+
+    # Nothing has landmarks. Real for a video whose artifact upload failed AND
+    # whose rows were written without them -- report it rather than silently
+    # scoring against empty skeletons.
+    if rows:
+        import logging
+        logging.getLogger("app.analysis").warning(
+            "no pose landmarks available for video %s track %s", video.id, tp.track_id)
+    return rows
 
 
 def court_positions_from_db(db: Session, video_id: str, tp: TrackedPerson) -> List[Dict]:
@@ -447,9 +549,12 @@ def update_player_profile(user_id: str) -> None:
 # Durable PipelineResult handling
 # ---------------------------------------------------------------------------
 
-def _publish_artifact(video: Video, result: PipelineResult, workdir=None) -> None:
-    """Best-effort. A failure to upload the artifact must not fail an analysis
-    the user is waiting on — it costs a later rehydration, nothing more."""
+def _publish_artifact(video: Video, result: PipelineResult, workdir=None) -> bool:
+    """Write the full PipelineResult to object storage. Returns success.
+
+    The return value is load-bearing: it decides whether the per-frame
+    landmarks still need to be written to Postgres as well.
+    """
     import tempfile
     from pathlib import Path
     try:
@@ -459,10 +564,13 @@ def _publish_artifact(video: Video, result: PipelineResult, workdir=None) -> Non
             result, user_id=video.owner_user_id, video_id=video.id,
             pipeline_version=PIPELINE_VERSION, workdir=target,
         )
+        return True
     except Exception:  # noqa: BLE001
         import logging
         logging.getLogger("app.analysis").warning(
-            "could not publish pipeline artifact for %s", video.id, exc_info=True)
+            "could not publish pipeline artifact for %s; "
+            "falling back to storing pose landmarks in Postgres", video.id, exc_info=True)
+        return False
 
 
 def _rehydrate(video: Video) -> Optional[PipelineResult]:

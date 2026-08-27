@@ -517,7 +517,7 @@ def overlay_manifest(video_id: str, current_user: User = Depends(get_current_use
     tracks = [analysis_service.rebuild_track_from_db(tp) for tp in persons]
     poses = []
     for tp in persons:
-        poses.extend(analysis_service.pose_samples_from_db(db, tp))
+        poses.extend(analysis_service.pose_samples_for(db, video, tp))
     shuttle_points = [
         ShuttlePoint(frame_index=s.frame_index, timestamp_s=s.timestamp_s,
                      x_px=(s.position_px or {}).get("x", 0), y_px=(s.position_px or {}).get("y", 0),
@@ -558,7 +558,7 @@ def scorecards(video_id: str, current_user: User = Depends(get_current_user), db
     if not self_tp:
         raise HTTPException(status_code=404, detail="Scorecards appear after you confirm which player is you.")
 
-    pose_samples = analysis_service.pose_samples_from_db(db, self_tp)
+    pose_samples = analysis_service.pose_samples_for(db, video, self_tp)
     frames = biomech_mod.analyze_pose_sequence(pose_samples)
     pose_by_frame = {p.frame_index: p.landmarks for p in pose_samples}
 

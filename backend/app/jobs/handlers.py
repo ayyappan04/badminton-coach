@@ -330,10 +330,16 @@ def _ingest_and_analyze(message: JobMessage) -> str:
         run.status = SUCCEEDED
         run.completed_at = _now()
         run.progress_pct = 100
+        wall_seconds = round(time.monotonic() - started, 2)
         run.metrics = {
-            "duration_seconds": round(time.monotonic() - started, 2),
+            "duration_seconds": wall_seconds,
             "analysis_confidence": video.analysis_confidence,
             "quality_score": video.quality_score,
+            # Workload shape, recorded so scheduling decisions can later be
+            # made from measurements instead of guesses. Deliberately just
+            # data: no autoscaler is built on it yet, and building one before
+            # there is a fleet to scale would be premature.
+            **workload_profile(video, wall_seconds),
         }
         _mark_current(db, run)
         video.current_analysis_run_id = run.id
@@ -386,3 +392,25 @@ def _cleanup(message: JobMessage) -> str:
         return JobOutcome.RETRY
     finally:
         db.close()
+
+
+def workload_profile(video, wall_seconds: float) -> dict:
+    """How expensive this analysis actually was, relative to its input.
+
+    `realtime_factor` is the number worth watching: seconds of compute per
+    second of footage. It is what turns "we have N minutes of backlog" into
+    "we need M workers", and it is the first thing to check when throughput
+    changes after a pipeline release.
+    """
+    duration = float(video.duration_seconds or 0)
+    pixels = (video.resolution_w or 0) * (video.resolution_h or 0)
+    return {
+        "source_duration_seconds": round(duration, 2),
+        "source_megapixels": round(pixels / 1_000_000, 2),
+        "source_fps": video.fps,
+        "source_size_bytes": video.source_size_bytes,
+        "realtime_factor": round(wall_seconds / duration, 3) if duration > 0 else None,
+        # Rough cost proxy: frames x megapixels. Comparable across resolutions
+        # in a way wall-clock alone is not.
+        "megapixel_seconds": round((pixels / 1_000_000) * duration, 1) if pixels else None,
+    }
