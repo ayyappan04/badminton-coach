@@ -11,7 +11,10 @@ class User(TimestampedBase):
     __tablename__ = "users"
 
     email: Mapped[str] = mapped_column(String, unique=True, index=True)
-    hashed_password: Mapped[str] = mapped_column(String)
+    # Nullable since the Supabase Auth migration: an account whose identity
+    # lives in Supabase has no password here, and must never be able to
+    # authenticate against a local hash.
+    hashed_password: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     display_name: Mapped[str] = mapped_column(String)
     avatar_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # Set when the user clicks their verification link.
@@ -19,6 +22,15 @@ class User(TimestampedBase):
     # Any access token issued before this instant is rejected. Bumped on
     # logout and on password reset so those actions really end a session.
     tokens_valid_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # "local" (this app's own JWTs) or "supabase" (Supabase Auth).
+    auth_provider: Mapped[str] = mapped_column(String, default="local", index=True)
+    # For Supabase-native accounts this equals `id`. Keeping them identical is
+    # what lets one value satisfy all three enforcement layers: the ownership
+    # column, `auth.uid()` in a Postgres RLS policy, and the first segment of
+    # every storage object key.
+    supabase_user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True,
+                                                            unique=True, index=True)
 
 
 class ConsentSettings(TimestampedBase):

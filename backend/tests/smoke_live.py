@@ -14,7 +14,11 @@ from pathlib import Path
 
 import httpx
 
-BASE = "http://127.0.0.1:8131/api/v1"
+import os
+
+# Port is configurable so this can be pointed at a staging deployment or at a
+# container, not only at a dev server on one hardcoded port.
+BASE = os.environ.get("BC_SMOKE_BASE", "http://127.0.0.1:8131").rstrip("/") + "/api/v1"
 PASSWORD = "CorrectHorse9!battery"
 
 passed, failed = [], []

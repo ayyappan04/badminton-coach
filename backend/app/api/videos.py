@@ -20,6 +20,8 @@ from app.services import analysis_service
 from app.services.cv_pipeline.overlay import build_overlay_manifest
 from app.services.cv_pipeline.court_detection import solve_homography_from_corners
 from app.services.coaching.technique_scores import compute_technique_scores
+from app.services import deletion_service, events as events_service, upload_service, video_state as vs
+from app.storage import get_storage
 from app import worker
 
 router = APIRouter(prefix="/videos", tags=["videos"])
@@ -45,8 +47,51 @@ class VideoOut(BaseModel):
     quality_score: Optional[int] = None
     recorded_at: Optional[str] = None
 
+    # --- production lifecycle ---------------------------------------------
+    # `status` keeps its original vocabulary and gains the states that used to
+    # be invisible (created/uploading/validating/queued/normalizing). Clients
+    # that only understood the old five still work; `status_group` exists so
+    # they do not have to enumerate the new ones.
+    status_group: Optional[str] = None
+    status_label: Optional[str] = None
+    processing_error_code: Optional[str] = None
+    processing_error_retryable: Optional[bool] = None
+    failed_stage: Optional[str] = None
+    analysis_confidence: Optional[float] = None
+    duration_seconds_source: Optional[float] = None
+    source_size_bytes: Optional[int] = None
+    has_playback_asset: bool = False
+    thumbnail_url: Optional[str] = None
+
     class Config:
         from_attributes = True
+
+
+def _video_out(db: Session, video: Video, *, with_thumbnail: bool = False) -> VideoOut:
+    """Serialise a Video, including the derived facts the UI needs.
+
+    Thumbnail signing is opt-in because it costs one storage round trip per
+    video; the library asks for it, single-video reads do not.
+    """
+    from app.models.assets import PLAYBACK_PROXY, THUMBNAIL, VideoAsset
+
+    out = VideoOut.model_validate(video)
+    out.status_group = vs.GROUP.get(video.status)
+    out.status_label = vs.LABEL.get(video.status)
+    out.duration_seconds_source = video.duration_seconds
+    out.has_playback_asset = db.query(VideoAsset).filter_by(
+        video_id=video.id, asset_type=PLAYBACK_PROXY, deleted_at=None).first() is not None
+
+    if with_thumbnail:
+        thumb = db.query(VideoAsset).filter_by(
+            video_id=video.id, asset_type=THUMBNAIL, deleted_at=None).first()
+        if thumb is not None:
+            try:
+                out.thumbnail_url = get_storage().signed_read_url(
+                    thumb.storage_bucket, thumb.storage_path, config.SIGNED_URL_TTL_S)
+            except Exception:  # noqa: BLE001 — a missing thumbnail is cosmetic
+                pass
+    return out
 
 
 VALID_MATCH_FORMATS = {"singles", "doubles", "unknown"}
@@ -68,6 +113,18 @@ def upload_video(
     storage filename, sanitised display filename, per-user hourly rate limit
     and total storage quota.
     """
+    # LEGACY PATH. Production uploads go browser -> object storage via
+    # POST /videos/uploads; routing multi-gigabyte bodies through the API
+    # process is exactly what that redesign removed. This endpoint stays so
+    # local development and the existing test suite keep working, and it
+    # refuses to run in production.
+    if config.STORAGE_BACKEND != "local" or config.IS_PRODUCTION:
+        raise HTTPException(
+            status_code=410,
+            detail="Direct multipart upload is disabled. "
+                   "Use POST /videos/uploads for resumable direct-to-storage uploads.",
+        )
+
     rate_limit_check(f"upload:{current_user.id}", (config.MAX_UPLOADS_PER_HOUR, 3600))
 
     if match_format not in VALID_MATCH_FORMATS:
@@ -107,27 +164,200 @@ def upload_video(
 
 @router.get("", response_model=List[VideoOut])
 def list_videos(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(Video).filter_by(owner_user_id=current_user.id).order_by(Video.created_at.desc()).all()
+    videos = (
+        db.query(Video)
+        .filter(Video.owner_user_id == current_user.id, Video.deleted_at.is_(None))
+        .order_by(Video.created_at.desc()).all()
+    )
+    return [_video_out(db, v, with_thumbnail=True) for v in videos]
 
 
 @router.get("/{video_id}", response_model=VideoOut)
 def get_video(video_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     video = _get_owned_video(db, video_id, current_user)
-    return video
+    return _video_out(db, video, with_thumbnail=True)
 
 
 @router.delete("/{video_id}")
 def delete_video(video_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Tombstone now, purge objects asynchronously.
+
+    Access ends the moment this returns: the video disappears from listings,
+    every coach review on it is revoked, and queued analysis is cancelled.
+    Object deletion is a separate idempotent job, because a storage API being
+    briefly unavailable must not leave a user unable to delete their own
+    footage.
+    """
     video = _get_owned_video(db, video_id, current_user)
-    Path(video.storage_path).unlink(missing_ok=True)
-    db.query(TrackedPerson).filter_by(video_id=video_id).delete()
-    db.query(Calibration).filter_by(video_id=video_id).delete()
-    db.query(Rally).filter_by(video_id=video_id).delete()
-    db.query(Shot).filter_by(video_id=video_id).delete()
-    db.query(CoachingInsight).filter_by(video_id=video_id).delete()
-    db.delete(video)
-    db.commit()
-    return {"deleted": True}
+    deletion_service.soft_delete_video(db, video)
+    return {"deleted": True, "cleanup": "queued"}
+
+
+@router.get("/{video_id}/playback")
+def playback_url(video_id: str, current_user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """A short-lived signed URL for the PLAYBACK proxy.
+
+    Deliberately not the original: a user rewatching a rally twelve times
+    should pull a 40 MB proxy twelve times, not a 4 GB source. The original
+    exists for analysis, reprocessing and high-quality evidence.
+
+    The URL expires. The frontend re-requests rather than caching it, and the
+    signature is never logged.
+    """
+    from app.models.assets import ANALYSIS_PROXY, ORIGINAL, PLAYBACK_PROXY, VideoAsset
+
+    video = _get_owned_video(db, video_id, current_user, allow_coach=True)
+
+    asset = None
+    for asset_type in (PLAYBACK_PROXY, ANALYSIS_PROXY, ORIGINAL):
+        asset = db.query(VideoAsset).filter_by(
+            video_id=video.id, asset_type=asset_type, deleted_at=None).first()
+        if asset is not None:
+            break
+
+    if asset is None:
+        # Pre-migration rows still have their bytes on local disk.
+        if video.storage_path and Path(video.storage_path).exists():
+            return {
+                "url": f"/api/v1/videos/{video.id}/stream",
+                "requires_token_query": True,
+                "asset_type": "legacy_local",
+                "expires_in": None,
+            }
+        raise HTTPException(status_code=404, detail="No playable video is available yet.")
+
+    try:
+        url = get_storage().signed_read_url(
+            asset.storage_bucket, asset.storage_path, config.SIGNED_URL_TTL_S)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503,
+                            detail="Video playback is temporarily unavailable.") from exc
+
+    return {
+        "url": url,
+        "asset_type": asset.asset_type,
+        "expires_in": config.SIGNED_URL_TTL_S,
+        "width": asset.width, "height": asset.height,
+        "duration_seconds": asset.duration_seconds,
+        "size_bytes": asset.size_bytes,
+        "requires_token_query": config.STORAGE_BACKEND == "local",
+    }
+
+
+@router.get("/objects/{bucket}/{object_key:path}")
+def read_object(bucket: str, object_key: str, token: str = Query(...)):
+    """Local-backend object reads, with the same ownership rules the signed
+    Supabase URL enforces.
+
+    Only reachable with STORAGE_BACKEND=local. It exists so `<video>` works in
+    development; in production the browser fetches a signed CDN URL and this
+    process is not in the data path at all.
+    """
+    if config.STORAGE_BACKEND != "local":
+        raise HTTPException(status_code=404, detail="Not found")
+
+    db = SessionLocal()
+    try:
+        user = resolve_user_from_token(db, token)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        from app.models.assets import VideoAsset
+        from app.storage.paths import owner_of
+
+        # Two independent checks: the key's owner prefix (which is what
+        # Storage RLS enforces in production) and the asset row's owner.
+        if owner_of(object_key) != user.id:
+            asset = db.query(VideoAsset).filter_by(
+                storage_bucket=bucket, storage_path=object_key, deleted_at=None).first()
+            if asset is None or not _may_read_video(db, asset.video_id, user.id):
+                raise HTTPException(status_code=404, detail="Not found")
+
+        storage = get_storage()
+        try:
+            path = storage._path(bucket, object_key)  # noqa: SLF001 — local backend only
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Invalid object path") from exc
+        if not path.exists() or not path.is_file():
+            raise HTTPException(status_code=404, detail="Not found")
+
+        media_type = "video/mp4" if path.suffix in (".mp4", ".m4v") else None
+        return FileResponse(str(path), media_type=media_type or "application/octet-stream",
+                            headers={"X-Content-Type-Options": "nosniff"})
+    finally:
+        db.close()
+
+
+@router.post("/{video_id}/reprocess")
+def reprocess_video(video_id: str, current_user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Start a NEW analysis run. The previous one is retained.
+
+    Pipeline versions change; a user should be able to re-analyze a match
+    without last month's numbers being silently rewritten underneath them.
+    """
+    from app.jobs import JobMessage, OP_INGEST, get_dispatcher
+
+    video = _get_owned_video(db, video_id, current_user)
+    active = upload_service.current_or_active_run(db, video.id)
+    if active is not None:
+        return {"status": video.status, "analysis_run_id": active.id, "started": False}
+    if video.status in (vs.CREATED, vs.UPLOADING):
+        raise HTTPException(status_code=409, detail="This upload hasn't finished yet.")
+
+    run = upload_service.create_run(db, video)
+    message = JobMessage(operation=OP_INGEST, video_id=video.id,
+                         analysis_run_id=run.id, pipeline_version=run.pipeline_version)
+    run.idempotency_key = message.idempotency_key
+    video.processing_error = None
+    video.processing_error_code = None
+    vs.advance(video, vs.QUEUED, stage="queued", progress_pct=0, strict=False)
+
+    dispatcher = get_dispatcher()
+    if getattr(dispatcher, "backend", "") == "pgmq":
+        dispatcher.enqueue(message, db=db)
+        db.commit()
+    else:
+        db.commit()
+        dispatcher.enqueue(message)
+
+    return {"status": video.status, "analysis_run_id": run.id,
+            "pipeline_version": run.pipeline_version, "started": True}
+
+
+@router.get("/{video_id}/runs")
+def list_runs(video_id: str, current_user: User = Depends(get_current_user),
+              db: Session = Depends(get_db)):
+    """Analysis history. One run is current; the rest are kept so a result
+    can always be traced to the pipeline version that produced it."""
+    from app.models.runs import AnalysisRun
+
+    video = _get_owned_video(db, video_id, current_user)
+    runs = (db.query(AnalysisRun).filter_by(video_id=video.id)
+            .order_by(AnalysisRun.created_at.desc()).all())
+    return [{
+        "id": r.id, "pipeline_version": r.pipeline_version, "status": r.status,
+        "is_current": r.is_current, "attempt": r.attempt, "stage": r.stage,
+        "progress_pct": r.progress_pct,
+        "started_at": r.started_at, "completed_at": r.completed_at,
+        "error_code": r.error_code, "error_message": r.error_message,
+        "retryable": r.retryable, "failed_stage": r.failed_stage,
+        "configuration": r.configuration, "metrics": r.metrics,
+    } for r in runs]
+
+
+@router.get("/{video_id}/events")
+def list_events(video_id: str, current_user: User = Depends(get_current_user),
+                db: Session = Depends(get_db)):
+    """Processing history for one video. Coarse by design — stage boundaries
+    and incidents, never per-frame."""
+    video = _get_owned_video(db, video_id, current_user)
+    return [{
+        "created_at": e.created_at, "event_type": e.event_type, "stage": e.stage,
+        "progress_pct": e.progress_pct, "message": e.message,
+        "duration_ms": e.duration_ms,
+    } for e in events_service.history(db, video.id)]
 
 
 @router.get("/{video_id}/stream")
@@ -464,8 +694,31 @@ def correct_calibration(video_id: str, payload: CalibrationCorrection,
     return {"corrected": True, "confidence": 0.85}
 
 
-def _get_owned_video(db: Session, video_id: str, user: User) -> Video:
+def _may_read_video(db: Session, video_id: str, user_id: str) -> bool:
+    """Ownership, or an ACTIVE coach review on this exact video.
+
+    The only non-owner read path in the product. Scoped to one video, granted
+    explicitly, and revoked the instant the review status changes — which is
+    also what `soft_delete_video` relies on.
+    """
     video = db.get(Video, video_id)
-    if not video or video.owner_user_id != user.id:
+    if video is None or video.deleted_at is not None:
+        return False
+    if video.owner_user_id == user_id:
+        return True
+    from app.models.coach_review import CoachReview
+    return db.query(CoachReview).filter_by(
+        video_id=video_id, coach_user_id=user_id, status="active").first() is not None
+
+
+def _get_owned_video(db: Session, video_id: str, user: User,
+                     allow_coach: bool = False) -> Video:
+    video = db.get(Video, video_id)
+    if not video or video.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Video not found")
+    if video.owner_user_id != user.id:
+        # 404 rather than 403 throughout: a 403 confirms the id exists, which
+        # turns id enumeration into an existence oracle.
+        if not (allow_coach and _may_read_video(db, video_id, user.id)):
+            raise HTTPException(status_code=404, detail="Video not found")
     return video

@@ -203,53 +203,84 @@ training, needs-calibration, or experimental.
 
 ## Architecture
 
+Three tiers, split along one line: **large bytes move directly through object
+storage; Vercel serves the application, not the video pipeline.**
+
 ```
-┌──────────────── Frontend (React 19 + TS + Vite + Tailwind 4) ─────────────────┐
-│  Coach  ·  Matches  ·  Progress  ·  Community  ·  Account flows               │
-└───────────────────────────────────┬───────────────────────────────────────────┘
-                                    │ REST + Bearer JWT
-┌───────────────────────────────────▼───────────────────────────────────────────┐
-│  FastAPI  ·  9 routers  ·  63 endpoints (61 auth · 2 API-key · 8 public)      │
-│  Security middleware · CORS allowlist · catch-all error handler               │
-└───────────────────────────────────┬───────────────────────────────────────────┘
-        ┌───────────────────────────┼────────────────────────────┐
-        ▼                           ▼                            ▼
-┌──────────────┐        ┌────────────────────┐       ┌──────────────────────┐
-│ SQLAlchemy   │        │  Private storage   │       │  Worker (thread pool)│
-│ SQLite / PG  │        │  (never web-served)│       │  analysis jobs       │
-└──────────────┘        └────────────────────┘       └──────────┬───────────┘
-                                                                 ▼
-   quality gate → court detection → tracking → pose → shuttle → rally
-   → phases → shots → biomechanics → tactics → insights → profile
+                         ┌─────────────────────────┐
+                         │        Browser          │
+                         │  React / Vite (Vercel)  │
+                         └────────────┬────────────┘
+          small JSON control calls    │    video bytes (TUS, resumable)
+                     ┌────────────────┴────────┴────────────────┐
+                     ▼                                          ▼
+          ┌──────────────────────┐                   ┌──────────────────────┐
+          │  Vercel (static SPA) │                   │  Supabase Storage    │
+          └──────────┬───────────┘                   │  private buckets     │
+                     │ /api/*                        └───────────┬──────────┘
+                     ▼                                           │
+          ┌──────────────────────┐                               │
+          │  FastAPI  (container)│  control plane only           │
+          │  72 endpoints        │  never a data pipe            │
+          └──────────┬───────────┘                               │
+              ┌──────▼───────────────────────────────────────────▼───────┐
+              │  Supabase: Auth · Postgres 17 · RLS · pgmq · Realtime    │
+              └────────────────────────┬────────────────────────────────┘
+                                       │ durable queued jobs
+                                       ▼
+                        ┌──────────────────────────────┐
+                        │  Python Worker (container)   │
+                        │  FFmpeg · OpenCV · MediaPipe │
+                        └──────────────┬───────────────┘
+                                       ▼
+   probe → validate → normalize → quality gate → court detection → tracking
+   → pose → shuttle → rally → phases → shots → biomechanics → tactics
+   → insights → profile
 ```
+
+Video bytes take exactly two paths, and neither touches Vercel or the API:
+`browser → storage` on upload, `storage → worker` on processing, and
+`storage → browser` for playback via a short-lived signed URL.
+
+**Full detail: [docs/PRODUCTION_ARCHITECTURE.md](docs/PRODUCTION_ARCHITECTURE.md).**
+Schema and provenance: [docs/DATA_MODEL.md](docs/DATA_MODEL.md).
+Runbook: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ```
 backend/app/
-  api/         auth · videos · profile · technique · community · consent
-               coach · coach_reviews · integration
-  core/        config · security · deps · mailer · tokens · rate_limit · uploads
-  models/      15 model modules
+  api/         auth · uploads · videos · profile · technique · community
+               consent · coach · coach_reviews · integration
+  core/        config · security · deps · observability · mailer · tokens
+               rate_limit · uploads · auth_supabase
+  storage/     VideoStorage protocol · local · supabase · immutable paths
+  jobs/        JobDispatcher protocol · local · pgmq · handlers · runner
+  media/       ffmpeg wrapper · probe · normalize · error taxonomy
+  models/      18 model modules
   services/
     cv_pipeline/   14 stages
     coaching/      insight_generator · technique_scores · coach_chat
     tactics/       match_analytics · doubles_rotation
     profiling/     player_profile_builder
-  worker.py
-backend/tests/   98 tests + live smoke + two video matrices
+    upload_service · ingest_service · deletion_service · reconcile_service
+    usage_service · video_state · events · pipeline_artifacts
+  main.py      manage.py (ops CLI)
+backend/alembic/    domain schema migrations
+backend/tests/      234 tests + live smoke + two video matrices
+supabase/migrations/  RLS · storage buckets/policies · pgmq · Realtime
 frontend/src/
-  ui/            design tokens + primitives (Surface, Metric, Delta,
-                 Confidence, DataTable, SegmentedControl, …)
+  ui/            design tokens + primitives
+  lib/           supabase client · resumable upload · preflight
   pages/         Welcome · Dashboard (Matches) · Profile (Progress) ·
                  Community · AccountFlows
   components/
     match/       MatchSummary · MatchTabs · matchData
     …            26 feature components
-docs/            design, security, evidence
+docs/            architecture, operations, data model, security, evidence
 ```
 
-**Stack:** FastAPI · SQLAlchemy 2 · SQLite (dev) / Postgres (prod-ready) ·
-PyJWT · passlib/bcrypt · OpenCV 4.10 · MediaPipe 0.10 · React 19 · Vite ·
-Tailwind 4 · Recharts.
+**Stack:** FastAPI · SQLAlchemy 2 · Alembic · Supabase (Postgres 17, Auth,
+Storage, Queues, Realtime) · PyJWT · FFmpeg · OpenCV · MediaPipe · React 19 ·
+Vite · Tailwind 4 · Recharts · tus-js-client · Docker · Vercel.
 
 ---
 
@@ -274,6 +305,51 @@ Three rules do most of the work:
 Numbers use tabular figures so columns align. Mobile gets bottom navigation
 and stacked tables rather than a squeezed desktop layout, with no analytical
 detail removed.
+
+---
+
+## Deployment
+
+Three tiers, three secret scopes. Getting the last column wrong is a real
+vulnerability, not a style issue.
+
+| Tier | Runs | Holds |
+|---|---|---|
+| Vercel | the static SPA | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` — public by definition |
+| API + worker containers | FastAPI, the CV pipeline | `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL` — never in a browser |
+| Supabase | identity, Postgres, private buckets, queues | the data |
+
+```bash
+# 1. domain schema (Alembic is the authority)
+cd backend
+export DATABASE_URL='postgresql+psycopg://postgres:PASSWORD@db.<ref>.supabase.co:5432/postgres'
+python -m alembic upgrade head
+```
+
+```bash
+# 2. platform configuration: RLS, storage buckets, queues, Realtime
+supabase link --project-ref <ref> && supabase db push
+```
+
+```bash
+# 3. API and worker containers
+docker compose up --build
+```
+
+```bash
+# 4. check every dependency before sending traffic
+cd backend && python manage.py doctor
+```
+
+Three switches decide whether a process behaves as the local MVP or as a
+production tier. All default to local, so `pytest` and `uvicorn` work with no
+environment set:
+
+| Variable | Values |
+|---|---|
+| `STORAGE_BACKEND` | `local` · `supabase` |
+| `JOB_BACKEND` | `local` · `pgmq` |
+| `AUTH_MODE` | `legacy` · `supabase` · `dual` |
 
 ---
 
@@ -312,11 +388,17 @@ docker run -p 1025:1025 -p 8025:8025 axllent/mailpit   # local capture
 
 ### A note on the Python version
 
-The backend currently runs on **Python 3.9, which is end-of-life**. Patched
-releases of `python-multipart`, FastAPI, and Starlette all require Python
-3.10+, so some dependency advisories cannot be resolved until the runtime
-moves. This is the highest-priority item on the roadmap and is documented in
-`docs/SECURITY.md §6`.
+The **container runtime is Python 3.12** (`backend/Dockerfile`), which is what
+unblocked the patched releases of FastAPI, Starlette and `python-multipart`
+that all require 3.10+. `requirements.txt` targets that runtime.
+
+The development machine this was built on has only Python 3.9 available, so the
+committed test results were produced against `requirements-py39.txt` — the
+older, 3.9-capped pin set. The 3.12 set has been statically validated (every
+pin resolves, declares 3.12 support, and satisfies the cross-package
+constraints) but **has not been executed**, because building the image requires
+a Docker daemon that was not available. Running `docker compose up --build`
+followed by `pytest` inside the image is the remaining validation step.
 
 ---
 
@@ -325,7 +407,8 @@ moves. This is the highest-priority item on the roadmap and is documented in
 ```bash
 cd backend && source .venv/bin/activate
 
-python -m pytest tests/ -q                 # 98 tests
+python -m pytest tests/ -q                 # 234 tests
+python -m pytest -m "not integration" -q   # fast subset (skips the CV end-to-end)
 uvicorn app.main:app --port 8131 &         # then, in another shell:
 python -m tests.smoke_live                 # 35 live end-to-end checks
 
@@ -348,6 +431,13 @@ npx tsc -b --noEmit && npm run lint && npm audit && npm run build
 | `test_upload_security.py` | Type/size/signature validation, traversal, CRLF, unicode, quotas |
 | `test_injection_and_hardening.py` | 10 injection strings, SQLi, error hygiene, security headers, medical safety |
 | `test_production_config.py` | Production secret enforcement, verification gating, secret scan |
+| `test_upload_lifecycle.py` | 12-state transition model, direct-to-storage authorization, idempotent completion, truncated-upload detection, quotas, refresh recovery |
+| `test_storage_layer.py` | Immutable path construction, traversal rejection, bucket containment, streamed checksums, signed-read authorization |
+| `test_job_system.py` | Atomic claim, lease expiry, heartbeat, stale-worker recovery, duplicate-delivery idempotency, reprocessing history |
+| `test_media_pipeline.py` | ffprobe authority over declared type, permanent-vs-retryable classification, normalization planning, rotation baking, subprocess safety |
+| `test_migrations.py` | Chain linearity, upgrade/downgrade round trip, model-vs-migration drift, offline SQL generation |
+| `test_production_isolation.py` | Cross-user denial across 16 endpoints, coach grant/revoke, two-phase deletion, service-key containment in the client bundle |
+| `test_e2e_pipeline.py` | Account → upload → queue → worker → results → signed playback → delete, driving the real worker loop |
 
 **CI:** `docs/ci/ci.yml` runs tests, pip-audit, bandit, typecheck, lint, npm
 audit, build, and a gitleaks scan. It lives under `docs/` because the push

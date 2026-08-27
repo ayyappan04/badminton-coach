@@ -1,0 +1,51 @@
+# Local Supabase stack. Mirrors production settings that affect behaviour, so
+# a bug that only appears under real limits is reproducible offline.
+project_id = "shuttlesense"
+
+[api]
+enabled = true
+port = 54321
+# `private` is deliberately absent: the RLS helper functions live there
+# precisely so PostgREST cannot expose them as RPC endpoints.
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[db.pooler]
+enabled = true
+# Serverless and short-lived worker connections must not each hold a real
+# Postgres backend.
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 200
+
+[storage]
+enabled = true
+# Matches MAX_VIDEO_GB in the backend. A local upload that would be rejected
+# in production should be rejected locally too.
+file_size_limit = "5GiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/auth/callback"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+double_confirm_changes = true
+secure_password_change = true
+
+[realtime]
+enabled = true
+
+[analytics]
+enabled = false

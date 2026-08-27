@@ -1,0 +1,43 @@
+# ============================================================================
+# Legacy local development set: Python 3.9.
+#
+# This is the environment the committed backend test results were produced in,
+# because no 3.11+ interpreter was available on the development machine. It is
+# NOT what production runs -- see requirements.txt and the Dockerfile.
+#
+# Several pins here are capped by the 3.9 runtime rather than chosen:
+#   fastapi           >=0.129 requires py3.10
+#   starlette 1.x     requires py3.10
+#   python-multipart  >=0.0.21 requires py3.10
+# Those caps are the reason the runtime upgrade is tracked as HIGH priority in
+# docs/SECURITY.md.
+# ============================================================================
+
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+sqlalchemy==2.0.30
+alembic==1.13.2
+pydantic==2.7.4
+email-validator==2.1.1
+python-multipart==0.0.20
+
+PyJWT==2.13.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+
+httpx==0.27.0
+psycopg[binary]==3.1.18
+
+opencv-python==4.10.0.84
+mediapipe==0.10.14
+numpy
+
+python-dotenv==1.0.1
+
+# ffmpeg/ffprobe binaries for machines without a system install. The container
+# apt-installs the real thing; this is purely a local convenience so the media
+# tests are runnable offline.
+static-ffmpeg==2.13
+
+pytest==8.2.2
+pytest-timeout==2.3.1

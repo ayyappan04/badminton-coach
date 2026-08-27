@@ -8,6 +8,8 @@ from app.models.training_data import TrainingAsset, ConsentRecord, Annotation
 from app.models.corrections import UserCorrection, ProcessingJob
 from app.models.coach_review import CoachReview, CoachNote
 from app.models.api_key import ApiKey
+from app.models.assets import VideoAsset, UploadSession, StorageUsage
+from app.models.runs import AnalysisRun, ProcessingEvent
 
 __all__ = [
     "User", "ConsentSettings",
@@ -20,4 +22,6 @@ __all__ = [
     "UserCorrection", "ProcessingJob",
     "CoachReview", "CoachNote",
     "ApiKey",
+    "VideoAsset", "UploadSession", "StorageUsage",
+    "AnalysisRun", "ProcessingEvent",
 ]

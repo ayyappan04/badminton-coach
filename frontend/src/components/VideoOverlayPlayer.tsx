@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, getToken } from "../api/client";
-import type { Video } from "../types";
+import type { Video, PlaybackSource } from "../types";
 
 const SAMPLE_FPS = 10; // must match backend FRAME_SAMPLE_FPS (app/core/config.py)
 
@@ -111,7 +111,49 @@ export function VideoOverlayPlayer({ video, seekTo }: { video: Video; seekTo: nu
     return () => cancelAnimationFrame(raf);
   }, [manifest, showSkeleton, showCourt, showShuttle, showBoxes]);
 
-  const src = `/api/v1/videos/${video.id}/stream?token=${encodeURIComponent(getToken() || "")}`;
+  /* --- playback source ---------------------------------------------------
+     A short-lived signed URL to the PLAYBACK proxy, not the original. A user
+     rewatching a rally twelve times should pull a ~40 MB proxy twelve times,
+     not a 4 GB source — that difference is most of the egress bill.
+
+     The URL expires, so it is refreshed rather than cached, and it is never
+     logged. Local development falls back to the authenticated object route,
+     which needs the token inline because <video> cannot send headers.
+     ---------------------------------------------------------------------- */
+  const [source, setSource] = useState<PlaybackSource | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSource(null);
+    setSourceError(null);
+
+    api.get<PlaybackSource>(`/videos/${video.id}/playback`)
+      .then((s) => { if (!cancelled) setSource(s); })
+      .catch(() => {
+        if (cancelled) return;
+        setSourceError("This match's video isn't available to play yet.");
+      });
+    return () => { cancelled = true; };
+  }, [video.id]);
+
+  // Re-sign before expiry so a long review session does not stall mid-rally.
+  useEffect(() => {
+    if (!source?.expires_in) return;
+    const refreshInMs = Math.max(30_000, (source.expires_in - 120) * 1000);
+    const timer = setTimeout(() => {
+      api.get<PlaybackSource>(`/videos/${video.id}/playback`)
+        .then(setSource)
+        .catch(() => { /* the current URL is still valid for a little longer */ });
+    }, refreshInMs);
+    return () => clearTimeout(timer);
+  }, [source, video.id]);
+
+  const src = source
+    ? (source.requires_token_query
+        ? `${source.url}${source.url.includes("?") ? "&" : "?"}token=${encodeURIComponent(getToken() || "")}`
+        : source.url)
+    : undefined;
 
   return (
     <div>
@@ -134,9 +176,12 @@ export function VideoOverlayPlayer({ video, seekTo }: { video: Video; seekTo: nu
         ))}
       </div>
       <div className="relative bg-black rounded-lg overflow-hidden">
-        <video ref={videoRef} src={src} controls className="w-full max-h-[480px] block" />
+        <video ref={videoRef} src={src} controls preload="metadata" className="w-full max-h-[480px] block" />
         <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none w-full h-full" />
       </div>
+      {sourceError && (
+        <p className="text-[12px] mt-2" style={{ color: "var(--warning)" }}>{sourceError}</p>
+      )}
       {!manifest && (
         <p className="text-xs text-[var(--text-secondary)] mt-2">
           Overlay data isn't available yet for this video (it may need re-processing after a server

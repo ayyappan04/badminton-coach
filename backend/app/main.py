@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -9,13 +9,22 @@ from app.db.session import Base, engine
 import app.models  # noqa: F401 register all models on Base.metadata
 from app.core import tokens as _tokens  # noqa: F401 registers one_time_tokens table
 from app.api import (
-    auth, videos, profile, technique, community, consent, coach, coach_reviews, integration,
+    auth, videos, uploads, profile, technique, community, consent, coach,
+    coach_reviews, integration,
 )
+from app.core.observability import configure_logging, correlate, new_request_id, metrics
 from app.seed_content import seed as seed_content
 
 logger = logging.getLogger("app")
 
-Base.metadata.create_all(engine)
+configure_logging()
+
+# Schema creation at import time is a development convenience only. In
+# production Alembic owns the domain schema and Supabase migrations own RLS,
+# storage policies and queues -- see docs/PRODUCTION_ARCHITECTURE.md. Starting
+# a production process must never mutate the schema as a side effect.
+if not config.IS_PRODUCTION:
+    Base.metadata.create_all(engine)
 seed_content()
 
 app = FastAPI(
@@ -35,6 +44,22 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     max_age=600,
 )
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    """Attach a request id and echo it back.
+
+    An incident starts with one of these and has to be traceable across the API
+    container and the worker container, which never talk to each other
+    directly. Honouring an inbound X-Request-Id keeps the chain intact when a
+    proxy or the frontend already assigned one.
+    """
+    request_id = request.headers.get("x-request-id") or new_request_id()
+    with correlate(request_id=request_id):
+        response = await call_next(request)
+    response.headers["X-Request-Id"] = request_id
+    return response
 
 
 @app.middleware("http")
@@ -76,7 +101,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
+# uploads must precede videos: both live under /videos, and FastAPI resolves
+# in registration order.
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(uploads.router, prefix="/api/v1")
 app.include_router(videos.router, prefix="/api/v1")
 app.include_router(profile.router, prefix="/api/v1")
 app.include_router(technique.router, prefix="/api/v1")
@@ -89,4 +117,62 @@ app.include_router(integration.router, prefix="/api/v1")
 
 @app.get("/api/v1/health")
 def health():
-    return {"status": "ok"}
+    """Liveness. Deliberately dependency-free: a database blip must not make an
+    orchestrator kill a process that is running fine."""
+    return {"status": "ok", "version": app.version}
+
+
+@app.get("/api/v1/ready")
+def ready():
+    """Readiness. Checks the dependencies this process actually needs to serve
+    traffic, cheaply -- one round trip each, and never a CV operation."""
+    from sqlalchemy import text
+    from app.jobs import get_dispatcher
+    from app.storage import get_storage
+
+    checks = {}
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["database"] = True
+    except Exception:  # noqa: BLE001
+        logger.warning("readiness: database unreachable", exc_info=True)
+        checks["database"] = False
+
+    try:
+        checks["storage"] = bool(get_storage().health())
+    except Exception:  # noqa: BLE001
+        checks["storage"] = False
+
+    try:
+        checks["queue"] = bool(get_dispatcher().health())
+    except Exception:  # noqa: BLE001
+        checks["queue"] = False
+
+    ok = all(checks.values())
+    return JSONResponse(
+        status_code=200 if ok else 503,
+        content={
+            "status": "ready" if ok else "degraded",
+            "checks": checks,
+            "storage_backend": config.STORAGE_BACKEND,
+            "job_backend": config.JOB_BACKEND,
+            "auth_mode": config.AUTH_MODE,
+        },
+    )
+
+
+@app.get("/api/v1/metrics")
+def metrics_endpoint(request: Request):
+    """Instrumentation snapshot.
+
+    Not public: in production it requires the operations token, because queue
+    depths and failure counts are operational intelligence.
+    """
+    import os
+    token = os.environ.get("METRICS_TOKEN", "")
+    if config.IS_PRODUCTION:
+        if not token or request.headers.get("x-metrics-token") != token:
+            raise HTTPException(status_code=404, detail="Not found")
+    return metrics.snapshot()

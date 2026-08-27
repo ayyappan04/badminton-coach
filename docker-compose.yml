@@ -1,0 +1,76 @@
+# =============================================================================
+# Local production-shaped stack.
+#
+# The point of this file is that "works on my machine" and "works in
+# production" exercise the same topology: an API container, a separate worker
+# container, and Supabase supplying Postgres/Auth/Storage/Queues.
+#
+#   supabase start        # Postgres + Auth + Storage + Realtime on :54321
+#   docker compose up     # API on :8000, worker alongside it
+#   cd frontend && npm run dev
+#
+# `supabase start` does not run Alembic. Apply the domain schema first:
+#   cd backend && DATABASE_URL=<from `supabase status`> python -m alembic upgrade head
+# =============================================================================
+
+x-python-env: &python-env
+  APP_ENV: ${APP_ENV:-development}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL (see supabase status)}
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-supabase}
+  JOB_BACKEND: ${JOB_BACKEND:-pgmq}
+  AUTH_MODE: ${AUTH_MODE:-supabase}
+  SUPABASE_URL: ${SUPABASE_URL:?set SUPABASE_URL}
+  # Privileged. Present in these two containers and nowhere else -- never in a
+  # VITE_ variable, never in the browser bundle.
+  SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?set SUPABASE_SERVICE_ROLE_KEY}
+  SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+  JWT_SECRET: ${JWT_SECRET:-}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+  MAX_VIDEO_GB: ${MAX_VIDEO_GB:-5}
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: shuttlesense-api:latest
+    environment:
+      <<: *python-env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    image: shuttlesense-worker:latest
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      <<: *python-env
+      # One CV job per container. Two pipelines on one box contend for the same
+      # cores AND the same frame-buffer budget, so they finish later than they
+      # would in sequence. Scale out with `--scale worker=N`, not up.
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      JOB_LEASE_S: ${JOB_LEASE_S:-900}
+    restart: unless-stopped
+    # Bounded so a 4K 40-minute match cannot take the host down with it. The
+    # pipeline's own frame-byte budget sits below this.
+    deploy:
+      resources:
+        limits:
+          cpus: "${WORKER_CPUS:-2}"
+          memory: ${WORKER_MEMORY:-4g}
+    # Scratch space for per-run working directories, sized and ephemeral.
+    tmpfs:
+      - /tmp/shuttlesense:size=8g

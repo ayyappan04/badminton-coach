@@ -2,14 +2,14 @@
 the database, and (once the user has identified themselves) generates
 coaching insights and refreshes the player's longitudinal profile.
 
-Note on the in-memory pipeline cache: for the MVP, the full structured
-PipelineResult (which keys biomechanics/tactics by the CV layer's integer
-track IDs) is kept in an in-process cache alongside its DB-persisted rows,
-because DB rows use UUID primary keys and re-deriving the richer structures
-from rows alone isn't necessary for a single-process demo deployment. A
-production deployment would persist an intermediate representation (or
-recompute insights directly from DB rows) so this survives process restarts
-and horizontal scaling.
+Note on the pipeline cache: the full structured PipelineResult keys
+biomechanics/tactics by the CV layer's integer track IDs, which DB rows (UUID
+primary keys) do not preserve. It is held in an in-process dict as a fast
+path, and — since the production migration — also written to object storage as
+a gzipped artifact by `pipeline_artifacts`. A cache miss therefore rehydrates
+instead of silently degrading, which is what makes `finalize_after_identity`
+produce the same analysis whether or not the worker that ran the pipeline is
+the worker that finishes the job.
 """
 import traceback
 from typing import Dict, List, Optional
@@ -34,29 +34,40 @@ _pipeline_cache: Dict[str, PipelineResult] = {}
 _track_id_map_cache: Dict[str, Dict[int, str]] = {}  # video_id -> {raw_track_id: tracked_person.id}
 
 
-def process_video(video_id: str) -> None:
+def process_video(video_id: str, source_path: Optional[str] = None,
+                  run=None, workdir=None, progress_cb=None) -> None:
+    """Run the CV pipeline for one video and persist the results.
+
+    `source_path` is the local analysis proxy the worker downloaded. It falls
+    back to `video.storage_path` so the pre-migration local flow, and its
+    tests, keep working unchanged.
+    """
     db = SessionLocal()
     try:
         video = db.get(Video, video_id)
         if not video:
             return
-        video.status = "processing"
-        video.progress_pct = 0
+        if video.status not in ("processing", "queued", "normalizing"):
+            video.status = "processing"
+        video.progress_pct = max(video.progress_pct or 0, 0)
         db.commit()
 
-        def progress_cb(pct: int, stage: str):
+        def _progress(pct: int, stage: str):
             video.progress_pct = pct
             video.stage = stage
             db.commit()
+            if progress_cb:
+                progress_cb(pct, stage)
 
+        media_path = source_path or video.storage_path
         try:
-            result = run_pipeline(video.storage_path, progress_cb=progress_cb)
+            result = run_pipeline(media_path, progress_cb=_progress)
         except Exception as exc:  # noqa: BLE001 — surface any CV failure as a user-facing processing error
             video.status = "failed"
             video.processing_error = f"{type(exc).__name__}: {exc}"
             db.commit()
             traceback.print_exc()
-            return
+            raise
 
         video.duration_seconds = result.meta.duration_s
         video.fps = result.meta.fps
@@ -67,8 +78,11 @@ def process_video(video_id: str) -> None:
             video.quality_score = result.quality["score"]
             video.quality_report = result.quality
 
+        video.analysis_confidence = _overall_confidence(result)
+
         _pipeline_cache[video_id] = result
         _persist_pipeline_result(db, video, result)
+        _publish_artifact(video, result, workdir)
 
         if len(result.tracks) == 1:
             # unambiguous — auto-assign the only detected person as "self"
@@ -221,8 +235,8 @@ def finalize_after_identity(video_id: str) -> None:
         video = db.get(Video, video_id)
         if not video:
             return
-        result = _pipeline_cache.get(video_id)
-        track_id_map = _track_id_map_cache.get(video_id, {})
+        result = _pipeline_cache.get(video_id) or _rehydrate(video)
+        track_id_map = _track_id_map_cache.get(video_id) or _rebuild_track_id_map(db, video_id)
         tracked_persons = get_tracked_persons(db, video_id)
         self_tp = next((tp for tp in tracked_persons if tp.role == "self"), None)
         if not self_tp or not result:
@@ -381,7 +395,7 @@ def update_player_profile(user_id: str) -> None:
 
             poses = db.query(PoseFrame).filter_by(tracked_person_id=self_tp.id).all()
             stabilities = []
-            cached = _pipeline_cache.get(video.id)
+            cached = _pipeline_cache.get(video.id) or _rehydrate(video)
             if cached:
                 for frame_list in cached.biomechanics.values():
                     stabilities.extend([f["stability_score"] for f in frame_list if f["stability_score"] is not None])
@@ -427,3 +441,68 @@ def update_player_profile(user_id: str) -> None:
             db.commit()
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Durable PipelineResult handling
+# ---------------------------------------------------------------------------
+
+def _publish_artifact(video: Video, result: PipelineResult, workdir=None) -> None:
+    """Best-effort. A failure to upload the artifact must not fail an analysis
+    the user is waiting on — it costs a later rehydration, nothing more."""
+    import tempfile
+    from pathlib import Path
+    try:
+        from app.services import pipeline_artifacts
+        target = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="ss-artifact-"))
+        pipeline_artifacts.publish(
+            result, user_id=video.owner_user_id, video_id=video.id,
+            pipeline_version=PIPELINE_VERSION, workdir=target,
+        )
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger("app.analysis").warning(
+            "could not publish pipeline artifact for %s", video.id, exc_info=True)
+
+
+def _rehydrate(video: Video) -> Optional[PipelineResult]:
+    """Fetch the stored PipelineResult and repopulate the in-process cache."""
+    try:
+        from app.services import pipeline_artifacts
+        result = pipeline_artifacts.fetch(
+            user_id=video.owner_user_id, video_id=video.id,
+            pipeline_version=video.pipeline_version or PIPELINE_VERSION,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if result is not None:
+        _pipeline_cache[video.id] = result
+    return result
+
+
+def _rebuild_track_id_map(db: Session, video_id: str) -> Dict[int, str]:
+    """{raw CV track id: tracked_person UUID}, recovered from persisted rows."""
+    mapping = {tp.track_id: tp.id for tp in get_tracked_persons(db, video_id)}
+    if mapping:
+        _track_id_map_cache[video_id] = mapping
+    return mapping
+
+
+def _overall_confidence(result: PipelineResult) -> Optional[float]:
+    """A single 0-1 number for "how much should this analysis be trusted".
+
+    Deliberately the mean of the measured signals rather than a fixed
+    constant: calibration confidence, mean track confidence and mean pose
+    confidence are the three things that actually determine whether the
+    downstream numbers mean anything.
+    """
+    signals = []
+    if result.calibration is not None:
+        signals.append(float(result.calibration.confidence or 0.0))
+    if result.tracks:
+        signals.append(sum(t.mean_confidence for t in result.tracks) / len(result.tracks))
+    if result.poses:
+        signals.append(sum(p.confidence for p in result.poses) / len(result.poses))
+    if not signals:
+        return None
+    return round(sum(signals) / len(signals), 4)

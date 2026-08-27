@@ -21,6 +21,64 @@ export interface Video {
   result_summary: string | null;
   quality_score: number | null;
   recorded_at: string | null;
+
+  /* --- production lifecycle -------------------------------------------
+     `status` keeps its original vocabulary and gains the states that used
+     to be invisible: created, uploading, validating, queued, normalizing,
+     cancelled, deleted. `status_group` collapses them to
+     upload | process | action_required | ready | error | gone so screens
+     branch on intent rather than enumerating twelve strings. */
+  status_group: "upload" | "process" | "action_required" | "ready" | "error" | "gone" | null;
+  status_label: string | null;
+  processing_error_code: string | null;
+  processing_error_retryable: boolean | null;
+  failed_stage: string | null;
+  analysis_confidence: number | null;
+  source_size_bytes: number | null;
+  has_playback_asset: boolean;
+  /** Short-lived signed URL, absent until the poster/thumbnail asset exists. */
+  thumbnail_url: string | null;
+}
+
+/** Response of GET /videos/{id}/playback. */
+export interface PlaybackSource {
+  url: string;
+  asset_type: string;
+  expires_in: number | null;
+  width?: number | null;
+  height?: number | null;
+  duration_seconds?: number | null;
+  size_bytes?: number | null;
+  /** Local dev serves objects through the authenticated API, which needs the
+   *  token as a query parameter because <video> cannot set headers. */
+  requires_token_query?: boolean;
+}
+
+export interface ProcessingEvent {
+  created_at: string;
+  event_type: string;
+  stage: string | null;
+  progress_pct: number | null;
+  message: string | null;
+  duration_ms: number | null;
+}
+
+export interface AnalysisRun {
+  id: string;
+  pipeline_version: string;
+  status: string;
+  is_current: boolean;
+  attempt: number;
+  stage: string | null;
+  progress_pct: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  retryable: boolean;
+  failed_stage: string | null;
+  configuration: Record<string, unknown> | null;
+  metrics: Record<string, unknown> | null;
 }
 
 export interface TrackedPerson {

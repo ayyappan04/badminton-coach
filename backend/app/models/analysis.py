@@ -1,8 +1,9 @@
 from typing import Optional
-from sqlalchemy import String, Float, Integer, JSON, Text
+from sqlalchemy import String, Float, Integer, JSON, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import TimestampedBase
+from app.models.types import JSONType
 
 
 class PoseFrame(TimestampedBase):
@@ -17,6 +18,10 @@ class PoseFrame(TimestampedBase):
     balance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # `pose_samples_from_db` filters on tracked_person_id and orders by
+    # frame_index; without the composite this is the single hottest sort in
+    # the scorecard path.
+    __table_args__ = (Index("ix_pose_frames_person_frame", "tracked_person_id", "frame_index"),)
 
 class ShuttleFrame(TimestampedBase):
     __tablename__ = "shuttle_frames"
@@ -29,13 +34,14 @@ class ShuttleFrame(TimestampedBase):
     estimated_speed_mps: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
 
+    __table_args__ = (Index("ix_shuttle_frames_video_frame", "video_id", "frame_index"),)
 
 class Rally(TimestampedBase):
     __tablename__ = "rallies"
 
     video_id: Mapped[str] = mapped_column(String, index=True)
     rally_index: Mapped[int] = mapped_column(Integer)
-    phases: Mapped[list] = mapped_column(JSON, default=list)  # [{phase, start_s, end_s, confidence}]
+    phases: Mapped[list] = mapped_column(JSONType, default=list)  # [{phase, start_s, end_s, confidence}]
     ending_shot_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     ending_track_role: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     start_frame: Mapped[int] = mapped_column(Integer)
@@ -45,6 +51,7 @@ class Rally(TimestampedBase):
     shot_count: Mapped[int] = mapped_column(Integer, default=0)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
 
+    __table_args__ = (Index("ix_rallies_video_index", "video_id", "rally_index"),)
 
 class Shot(TimestampedBase):
     __tablename__ = "shots"
@@ -62,6 +69,7 @@ class Shot(TimestampedBase):
     outcome: Mapped[str] = mapped_column(String, default="unknown")
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
 
+    __table_args__ = (Index("ix_shots_video_timestamp", "video_id", "timestamp_s"),)
 
 class MatchAnalytics(TimestampedBase):
     """Pre-aggregated whole-match analytics (V2). One row per video; each
@@ -72,7 +80,9 @@ class MatchAnalytics(TimestampedBase):
 
     video_id: Mapped[str] = mapped_column(String, unique=True, index=True)
     feature_version: Mapped[str] = mapped_column(String, default="2.0.0")
-    analytics: Mapped[dict] = mapped_column(JSON, default=dict)
+    # JSONB: the comparison endpoints reach into `blocks` by name, and the
+    # GIN index in migration 0002 needs a binary column to index.
+    analytics: Mapped[dict] = mapped_column(JSONType, default=dict)
 
 
 class CoachingInsight(TimestampedBase):
@@ -89,3 +99,5 @@ class CoachingInsight(TimestampedBase):
     drill_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     limitations: Mapped[list] = mapped_column(JSON, default=list)
+
+    __table_args__ = (Index("ix_insights_video_timestamp", "video_id", "timestamp_s"),)

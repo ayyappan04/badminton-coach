@@ -10,11 +10,12 @@ import { ComparisonStudio } from "../components/ComparisonStudio";
 import { CompareDrawer } from "../components/CompareDrawer";
 import { MatchSummary } from "../components/match/MatchSummary";
 import { useMatchData } from "../components/match/matchData";
+import { useVideoProgress } from "../hooks/useVideoProgress";
 import {
   MovementTab, OverviewTab, ShotsTab, TacticsTab, TechniqueTab,
 } from "../components/match/MatchTabs";
 import {
-  Button, EmptyState, ErrorState, Page, PageHeader, SegmentedControl, StatusLabel,
+  Button, EmptyState, Page, PageHeader, SegmentedControl, StatusLabel,
   Surface, formatDate,
 } from "../ui";
 
@@ -31,6 +32,17 @@ const TABS: { value: TabKey; label: string }[] = [
 /** Processing stages, in the order the backend runs them. Internal stage
  *  names are mapped to language a player understands. */
 const STAGE_LABELS: Record<string, string> = {
+  // Media ingestion, before any CV work.
+  queued: "Waiting for a worker",
+  fetching_video: "Fetching your recording",
+  checking_video: "Checking the recording",
+  validating: "Checking the recording",
+  optimizing_video: "Optimizing video",
+  storing_prepared_video: "Optimizing video",
+  fetching_prepared_video: "Loading prepared video",
+  normalizing: "Optimizing video",
+  analyzing: "Analyzing",
+  // CV pipeline.
   reading_video_metadata: "Reading video",
   assessing_video_quality: "Checking recording quality",
   extracting_frames: "Extracting frames",
@@ -86,13 +98,9 @@ export function Dashboard() {
     }
   }, [deepLinkTime, deepLinkVideo, selected]);
 
-  // Poll only while something is actually in flight.
-  useEffect(() => {
-    const active = videos.some((v) => v.status === "processing" || v.status === "uploaded");
-    if (!active) return;
-    const interval = setInterval(refreshVideos, 2500);
-    return () => clearInterval(interval);
-  }, [videos, refreshVideos]);
+  // Realtime when Supabase is configured, with polling underneath it always:
+  // a dropped websocket must cost staleness, never a video stuck on screen.
+  useVideoProgress(videos, refreshVideos);
 
   return (
     <Page>
@@ -188,6 +196,7 @@ function MatchAnalysis({
 }) {
   const { cards, analytics, loading } = useMatchData(video);
   const title = video.opponent_name ? `vs ${video.opponent_name}` : video.original_filename;
+  const group = video.status_group ?? (video.status === "analyzed" ? "ready" : "process");
   const analyzed = video.status === "analyzed";
   const dateLabel = formatDate(video.recorded_at ?? null);
 
@@ -205,11 +214,11 @@ function MatchAnalysis({
         </div>
       </header>
 
-      {video.status === "failed" && (
-        <ErrorState title="We couldn't analyze this match." detail={video.processing_error} />
+      {group === "error" && (
+        <FailurePanel video={video} onRetried={onPlayerSelected} />
       )}
 
-      {(video.status === "processing" || video.status === "uploaded") && (
+      {(group === "upload" || group === "process") && (
         <ProcessingPanel video={video} />
       )}
 
@@ -259,16 +268,25 @@ function MatchAnalysis({
 }
 
 /** Premium processing state: plain-language stage, percentage, and the
- *  technical detail tucked behind a disclosure. */
+ *  technical detail tucked behind a disclosure.
+ *
+ *  Uploading and processing are separated deliberately. Leaving "Uploading"
+ *  on screen while the server transcodes tells the user something false, and
+ *  it also implies they must stay on the page when they need not. */
 function ProcessingPanel({ video }: { video: Video }) {
-  const stageLabel = video.stage ? STAGE_LABELS[video.stage] ?? "Analysing" : "Starting analysis";
+  const uploading = video.status_group === "upload";
+  const stageLabel = uploading
+    ? (video.status_label ?? "Uploading")
+    : video.stage
+      ? STAGE_LABELS[video.stage] ?? "Analyzing"
+      : "Starting analysis";
 
   return (
     <Surface>
       <div className="flex items-baseline justify-between gap-4 mb-3">
         <div>
           <p className="text-[15px] font-medium" style={{ color: "var(--text-primary)" }}>
-            Analyzing match
+            {uploading ? "Uploading match" : "Analyzing match"}
           </p>
           <p className="text-[13px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
             {stageLabel}
@@ -299,11 +317,66 @@ function ProcessingPanel({ video }: { video: Video }) {
           Analysis details
         </summary>
         <p className="mt-1.5 text-[12px] leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
-          Each upload runs quality checks, court detection, player tracking, pose estimation,
-          shuttle detection, rally segmentation, shot recognition and tactical analysis in
-          sequence. Current stage: <code>{video.stage ?? "queued"}</code>.
+          Each upload is validated, normalized into an analysis proxy, then run through
+          quality checks, court detection, player tracking, pose estimation, shuttle
+          detection, rally segmentation, shot recognition and tactical analysis in
+          sequence. Current stage: <code>{video.stage ?? video.status}</code>.
+        </p>
+        <p className="mt-1.5 text-[12px]" style={{ color: "var(--text-tertiary)" }}>
+          You can close this page. Processing runs on our servers and continues without you.
         </p>
       </details>
+    </Surface>
+  );
+}
+
+
+/** Failure state that says what broke, and only offers Retry when retrying
+ *  could actually help. A retry button on a corrupt file wastes the user's
+ *  time and our compute proving the same thing three times. */
+function FailurePanel({ video, onRetried }: { video: Video; onRetried: () => void }) {
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retryable = video.processing_error_retryable !== false;
+
+  async function retry() {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await api.post(`/videos/${video.id}/reprocess`);
+      onRetried();
+    } catch (err) {
+      setRetryError(err instanceof Error ? err.message : "Could not start a new analysis.");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <Surface>
+      <p className="text-[15px] font-medium" style={{ color: "var(--negative)" }}>
+        {video.status === "cancelled" ? "Upload cancelled" : "We couldn't analyze this match"}
+      </p>
+      {video.processing_error && (
+        <p className="text-[13px] mt-1" style={{ color: "var(--text-secondary)" }}>
+          {video.processing_error}
+        </p>
+      )}
+      {video.failed_stage && (
+        <p className="text-[12px] mt-1" style={{ color: "var(--text-tertiary)" }}>
+          Failed during: {STAGE_LABELS[video.failed_stage] ?? video.failed_stage}
+        </p>
+      )}
+      {retryError && (
+        <p className="text-[13px] mt-2" style={{ color: "var(--negative)" }}>{retryError}</p>
+      )}
+      {retryable && (
+        <div className="mt-3">
+          <Button variant="primary" onClick={retry} disabled={retrying}>
+            {retrying ? "Starting..." : "Try again"}
+          </Button>
+        </div>
+      )}
     </Surface>
   );
 }

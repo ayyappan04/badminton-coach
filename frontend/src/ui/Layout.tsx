@@ -204,14 +204,26 @@ export function IconButton({
 
 /* --- Status --------------------------------------------------------------- */
 
-export type StatusKind = "uploaded" | "processing" | "needs_player_selection" | "analyzed" | "failed";
+export type StatusKind =
+  | "created" | "uploading" | "uploaded" | "validating" | "queued" | "normalizing"
+  | "processing" | "needs_player_selection" | "analyzed" | "failed" | "cancelled" | "deleted";
 
+// Uploading and processing read differently on purpose: they are different
+// things happening in different places, and only one of them requires the user
+// to keep the tab open.
 const STATUS: Record<StatusKind, { label: string; color: string; dot: string }> = {
+  created: { label: "Preparing", color: "var(--text-tertiary)", dot: "var(--text-tertiary)" },
+  uploading: { label: "Uploading", color: "var(--accent)", dot: "var(--accent)" },
   uploaded: { label: "Queued", color: "var(--text-tertiary)", dot: "var(--text-tertiary)" },
+  validating: { label: "Checking", color: "var(--accent)", dot: "var(--accent)" },
+  queued: { label: "Queued", color: "var(--text-tertiary)", dot: "var(--text-tertiary)" },
+  normalizing: { label: "Optimizing", color: "var(--accent)", dot: "var(--accent)" },
   processing: { label: "Analyzing", color: "var(--accent)", dot: "var(--accent)" },
   needs_player_selection: { label: "Needs your input", color: "var(--warning)", dot: "var(--warning)" },
   analyzed: { label: "Analyzed", color: "var(--text-secondary)", dot: "var(--positive)" },
   failed: { label: "Failed", color: "var(--negative)", dot: "var(--negative)" },
+  cancelled: { label: "Cancelled", color: "var(--text-tertiary)", dot: "var(--text-tertiary)" },
+  deleted: { label: "Deleted", color: "var(--text-tertiary)", dot: "var(--text-tertiary)" },
 };
 
 /** Compact dot+label. Deliberately not a big coloured box. */

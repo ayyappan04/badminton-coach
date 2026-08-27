@@ -1,0 +1,28 @@
+# Anything that would bloat the image, leak a secret, or invalidate the layer
+# cache on an unrelated change.
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Never bake local state or credentials into an image.
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+storage/
+uploads/
+
+# Tests and evidence are not needed at runtime.
+tests/
+docs/
+*.md
+!README.md
+.git/
+.github/

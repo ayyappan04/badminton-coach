@@ -1,5 +1,5 @@
 from typing import Optional
-from sqlalchemy import String, Float, Text
+from sqlalchemy import String, Float, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import TimestampedBase
@@ -35,3 +35,9 @@ class CoachNote(TimestampedBase):
     comment: Mapped[str] = mapped_column(Text)
     related_insight_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     stance: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # agree / adjust / disagree (vs the AI insight)
+
+
+# Declared outside the classes so the file's existing shape is untouched.
+Index("ix_coach_reviews_coach_status", CoachReview.coach_user_id, CoachReview.status)
+Index("ix_coach_reviews_video_status", CoachReview.video_id, CoachReview.status)
+Index("ix_coach_notes_video_created", CoachNote.video_id, CoachNote.created_at)

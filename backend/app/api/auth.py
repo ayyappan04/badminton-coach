@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
@@ -78,8 +78,28 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+
+_SUPABASE_OWNS_IDENTITY = (
+    "This deployment uses Supabase Auth. Register, sign in, verify your email "
+    "and reset your password through Supabase; this endpoint is disabled."
+)
+
+
+def _reject_if_supabase_auth() -> None:
+    """In supabase mode there must be exactly one source of identity.
+
+    Leaving these routes live would mean two password stores, two verification
+    flows, and an account that can be taken over through whichever of the two
+    is weaker. `dual` still allows them so existing users can sign in during
+    the cutover window.
+    """
+    if config.AUTH_MODE == "supabase":
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=_SUPABASE_OWNS_IDENTITY)
+
+
 @router.post("/register", response_model=TokenOut)
 def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    _reject_if_supabase_auth()
     rate_limit_check(f"register:{client_ip(request)}", config.REGISTER_RATE_LIMIT)
 
     ok, message = validate_password(payload.password, email=payload.email)
@@ -117,6 +137,7 @@ def register(payload: RegisterRequest, request: Request, db: Session = Depends(g
 
 @router.post("/login", response_model=TokenOut)
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    _reject_if_supabase_auth()
     rate_limit_check(f"login:{client_ip(request)}:{payload.email.lower()}", config.LOGIN_RATE_LIMIT)
 
     user = db.query(User).filter(User.email == payload.email).first()
@@ -143,6 +164,7 @@ def logout(current_user: User = Depends(get_current_user), db: Session = Depends
 
 @router.post("/verify-email")
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
+    _reject_if_supabase_auth()
     user_id = token_store.consume(db, payload.token, token_store.PURPOSE_VERIFY_EMAIL)
     if not user_id:
         raise HTTPException(status_code=400, detail="This verification link is invalid or has expired.")
@@ -157,6 +179,7 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
 
 @router.post("/resend-verification")
 def resend_verification(payload: ResetRequest, request: Request, db: Session = Depends(get_db)):
+    _reject_if_supabase_auth()
     rate_limit_check(f"resend:{client_ip(request)}:{payload.email.lower()}",
                      config.PASSWORD_RESET_RATE_LIMIT)
     user = db.query(User).filter(User.email == payload.email).first()
@@ -169,6 +192,7 @@ def resend_verification(payload: ResetRequest, request: Request, db: Session = D
 
 @router.post("/request-password-reset")
 def request_password_reset(payload: ResetRequest, request: Request, db: Session = Depends(get_db)):
+    _reject_if_supabase_auth()
     rate_limit_check(f"reset:{client_ip(request)}:{payload.email.lower()}",
                      config.PASSWORD_RESET_RATE_LIMIT)
     user = db.query(User).filter(User.email == payload.email).first()
@@ -182,6 +206,7 @@ def request_password_reset(payload: ResetRequest, request: Request, db: Session 
 
 @router.post("/reset-password")
 def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    _reject_if_supabase_auth()
     user_id = token_store.consume(db, payload.token, token_store.PURPOSE_PASSWORD_RESET)
     if not user_id:
         raise HTTPException(status_code=400, detail="This reset link is invalid or has expired.")

@@ -1,31 +1,49 @@
-# NOTE ON THE RUNTIME
-# This project currently runs on Python 3.9, which reached end of life in
-# October 2025. Several security fixes below are capped by that: the patched
-# releases of python-multipart (>=0.0.21), FastAPI (>=0.129) and Starlette
-# (1.x) all require Python >=3.10. Moving to Python 3.11+ is tracked as a
-# HIGH-priority item in docs/SECURITY.md and unblocks those upgrades.
+# ============================================================================
+# Production dependencies. Target runtime: Python 3.12 (see Dockerfile).
+#
+# The MVP was pinned to Python 3.9, which reached end of life in October 2025
+# and capped FastAPI, Starlette and python-multipart below their patched
+# releases. Containerising the runtime is what unblocks those upgrades, and
+# the versions below are the patched ones.
+#
+# Local development on a machine that still only has Python 3.9 should use
+# requirements-py39.txt, which is the set the committed test results were
+# produced with.
+# ============================================================================
 
-fastapi==0.111.0            # capped by Python 3.9; upgrade with the runtime
-uvicorn[standard]==0.30.1
-sqlalchemy==2.0.30
-pydantic==2.7.4
-email-validator==2.1.1
-python-multipart==0.0.20    # 0.0.9 -> 0.0.20 (DoS advisories); >=0.0.21 needs py3.10
+# --- web ---------------------------------------------------------------------
+fastapi==0.121.0            # >=0.129 needs py3.10; this is the patched 0.12x line
+uvicorn[standard]==0.32.1
+starlette==0.41.3
+python-multipart==0.0.20    # DoS advisories fixed
+pydantic==2.10.4
+email-validator==2.2.0
 
-# Auth. PyJWT replaces python-jose, which pulled in `ecdsa` — that package has
-# a known Minerva timing-attack advisory with no fix available.
-PyJWT==2.13.0
+# --- database ----------------------------------------------------------------
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg[binary,pool]==3.2.3  # Postgres driver; pool for the worker's long-lived conns
+
+# --- auth --------------------------------------------------------------------
+# PyJWT replaces python-jose, which pulled in `ecdsa` -- that package has a
+# known Minerva timing-attack advisory with no fix available.
+# [crypto] adds the ES256/RS256 support needed to verify Supabase JWTs
+# against the project's published JWKS.
+PyJWT[crypto]==2.10.1
 passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
+bcrypt==4.2.1
 
-# Computer vision
-opencv-python==4.10.0.84
-mediapipe==0.10.14
-numpy
+# --- storage / HTTP ----------------------------------------------------------
+httpx==0.28.1               # Supabase Storage REST client
+
+# --- computer vision ---------------------------------------------------------
+# headless: the worker has no display, and the GUI build drags in GTK.
+opencv-python-headless==4.10.0.84
+mediapipe==0.10.18
+numpy==1.26.4               # mediapipe 0.10.x is not numpy 2.x clean
 
 python-dotenv==1.0.1
 
-# --- dev/test only ---------------------------------------------------------
-pytest==8.2.2
+# --- dev / test only ---------------------------------------------------------
+pytest==8.3.4
 pytest-timeout==2.3.1
-httpx==0.27.0
