@@ -34,7 +34,57 @@ def normalize_database_url(url: str) -> str:
     return url
 
 
-RESOLVED_DATABASE_URL = normalize_database_url(DATABASE_URL)
+def qualify_pooler_username(url: str, supabase_url: str = "") -> str:
+    """Add the project ref to the username when connecting through the pooler.
+
+    Supabase's connection poolers are multi-tenant, so they identify the
+    project from the USERNAME: `postgres.<project_ref>`, not `postgres`. Copy
+    the direct connection string, change the host and port to the pooler, and
+    you get:
+
+        FATAL: password authentication failed for user "postgres"
+
+    which points at the password — the one part that was correct. A bare
+    `postgres` can never authenticate against the pooler, and the ref is
+    already known from SUPABASE_URL, so this is derivable rather than
+    guesswork. Logged, not silent.
+    """
+    if not url or "pooler.supabase.com" not in url or "://" not in url:
+        return url
+
+    scheme, _, rest = url.partition("://")
+    if "@" not in rest:
+        return url
+    credentials, _, host_part = rest.rpartition("@")
+    user, sep, password = credentials.partition(":")
+
+    # Already qualified, or not the default user — leave it alone.
+    if "." in user or user != "postgres":
+        return url
+
+    ref = ""
+    if supabase_url:
+        host = supabase_url.split("://")[-1].split("/")[0]
+        if host.endswith(".supabase.co"):
+            ref = host[: -len(".supabase.co")]
+    if not ref:
+        return url
+
+    import sys
+    print(
+        f"[db] pooler connection with username 'postgres'; qualifying it as "
+        f"'postgres.{ref}' from SUPABASE_URL. Supabase's pooler identifies the "
+        "project from the username and rejects a bare 'postgres'.",
+        file=sys.stderr,
+    )
+    return f"{scheme}://postgres.{ref}{sep}{password}@{host_part}"
+
+
+from app.core.config import SUPABASE_URL as _SUPABASE_URL  # noqa: E402
+
+RESOLVED_DATABASE_URL = qualify_pooler_username(
+    normalize_database_url(DATABASE_URL), _SUPABASE_URL
+)
 
 connect_args = (
     {"check_same_thread": False} if RESOLVED_DATABASE_URL.startswith("sqlite") else {}

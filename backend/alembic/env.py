@@ -35,9 +35,12 @@ def _url() -> str:
     'psycopg2'` on the exact connection string the dashboard hands you, while
     the app itself works — a maddening inconsistency.
     """
-    from app.db.session import normalize_database_url
+    from app.db.session import normalize_database_url, qualify_pooler_username
 
-    url = normalize_database_url(os.environ.get("DATABASE_URL", ""))
+    url = qualify_pooler_username(
+        normalize_database_url(os.environ.get("DATABASE_URL", "")),
+        os.environ.get("SUPABASE_URL", ""),
+    )
     if not url:
         raise SystemExit(
             "DATABASE_URL is not set. Point it at the target database, e.g.\n"

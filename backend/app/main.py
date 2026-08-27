@@ -198,6 +198,16 @@ def _database_hint(exc: Exception) -> str:
             "port 5432 (session mode) for the worker."
         )
     if "password authentication failed" in lowered:
+        # Against a pooler this usually is NOT the password. The pooler is
+        # multi-tenant and identifies the project from the username, so a bare
+        # `postgres` fails here while being correct for a direct connection.
+        if 'user "postgres"' in text:
+            return (
+                "the pooler rejected the username. Supabase's pooler needs "
+                "postgres.<project_ref>, not a bare postgres — the project is "
+                "identified by the username, not the host. Check DATABASE_URL, "
+                "or set SUPABASE_URL so it can be derived automatically."
+            )
         return "the database password in DATABASE_URL is wrong."
     if "does not exist" in lowered and "database" in lowered:
         return "that database name does not exist; check the end of DATABASE_URL."

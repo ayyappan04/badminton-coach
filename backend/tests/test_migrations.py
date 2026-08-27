@@ -158,3 +158,44 @@ def test_password_special_characters_survive_normalisation():
     out = norm(raw)
     assert out.startswith("postgresql+psycopg://")
     assert out.endswith("p%40ss-w0rd%2F%3F@aws-0.pooler.supabase.com:6543/postgres")
+
+
+def test_pooler_username_is_qualified_with_the_project_ref():
+    """Supabase's pooler is multi-tenant and identifies the project from the
+    USERNAME. Copying the direct connection string and changing only host and
+    port yields `FATAL: password authentication failed for user "postgres"` —
+    an error that blames the one part that was right."""
+    from app.db.session import qualify_pooler_username as q
+
+    SB = "https://calgdgaaogsxfdnodlmn.supabase.co"
+    pooler = "aws-0-us-west-2.pooler.supabase.com:6543/postgres"
+
+    assert q(f"postgresql://postgres:pw@{pooler}", SB) == \
+        f"postgresql://postgres.calgdgaaogsxfdnodlmn:pw@{pooler}"
+
+    # Already qualified: untouched.
+    already = f"postgresql://postgres.calgdgaaogsxfdnodlmn:pw@{pooler}"
+    assert q(already, SB) == already
+
+    # A direct connection does not use tenant-qualified usernames.
+    direct = "postgresql://postgres:pw@db.calgdgaaogsxfdnodlmn.supabase.co:5432/postgres"
+    assert q(direct, SB) == direct
+
+    # A deliberately different user is never rewritten.
+    custom = f"postgresql://myuser:pw@{pooler}"
+    assert q(custom, SB) == custom
+
+    # Without SUPABASE_URL the ref is unknown, so nothing is invented.
+    assert q(f"postgresql://postgres:pw@{pooler}", "") == f"postgresql://postgres:pw@{pooler}"
+
+
+def test_pooler_qualification_preserves_password_punctuation():
+    from app.db.session import qualify_pooler_username as q
+
+    SB = "https://abc.supabase.co"
+    url = "postgresql://postgres:p%40ss:word%2F@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+    out = q(url, SB)
+    assert out.startswith("postgresql://postgres.abc:")
+    assert out.endswith("@aws-0-eu-west-1.pooler.supabase.com:6543/postgres")
+    # Everything after the first colon is the password, untouched.
+    assert ":p%40ss:word%2F@" in out
