@@ -139,3 +139,59 @@ def test_no_secrets_committed_to_the_repo():
             if needle in text:
                 suspicious.append(f"{rel}: {needle}")
     assert not suspicious, f"possible secrets committed: {suspicious}"
+
+
+def _run_module(code: str, env: dict):
+    """Run a snippet in a fresh interpreter with a controlled environment.
+
+    A subprocess is essential here: `app.core.config` reads the environment at
+    import time, so the guard cannot be exercised in-process.
+    """
+    import os
+    import subprocess
+    import sys
+
+    child = {**os.environ, **env, "PYTHONPATH": str(BACKEND_DIR)}
+    # conftest sets JWT_SECRET for the whole test session, and it would be
+    # inherited here — silently satisfying the very guard under test. Anything
+    # the caller did not ask for explicitly is removed.
+    for key in ("JWT_SECRET", "AUTH_MODE", "STORAGE_BACKEND", "JOB_BACKEND"):
+        if key not in env:
+            child.pop(key, None)
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=BACKEND_DIR, capture_output=True, text=True, env=child,
+    )
+
+
+def test_jwt_secret_required_only_when_legacy_tokens_are_accepted(tmp_path):
+    """The production guard must protect the thing it is guarding.
+
+    JWT_SECRET signs THIS application's own tokens. Under AUTH_MODE=supabase
+    there are none — Supabase issues them and they are verified against its
+    JWKS. Demanding the secret there fails a deployment over a value with no
+    effect, which is exactly what happened on the first production deploy.
+    """
+    base = {
+        "APP_ENV": "production",
+        "DATABASE_URL": f"sqlite:///{tmp_path/'g.db'}",
+        "STORAGE_DIR": str(tmp_path / "gs"),
+    }
+    probe = "from app.core import config; print('STARTED', bool(config.JWT_SECRET))"
+
+    # legacy and dual both accept tokens we signed -> the secret is required.
+    for mode in ("legacy", "dual"):
+        result = _run_module(probe, {**base, "AUTH_MODE": mode})
+        assert "STARTED" not in result.stdout, f"AUTH_MODE={mode} started without JWT_SECRET"
+        assert "FATAL" in (result.stdout + result.stderr)
+
+    # supabase-only -> no local tokens exist, so it must start.
+    result = _run_module(probe, {**base, "AUTH_MODE": "supabase"})
+    assert "STARTED True" in result.stdout, (
+        f"supabase mode refused to start over an unused secret:\n{result.stderr[-800:]}"
+    )
+
+    # And a supplied secret is still honoured in every mode.
+    result = _run_module(probe, {**base, "AUTH_MODE": "supabase",
+                                 "JWT_SECRET": "a-real-secret-value-for-this-test"})
+    assert "STARTED True" in result.stdout

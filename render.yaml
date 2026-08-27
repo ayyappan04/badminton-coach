@@ -47,6 +47,11 @@ services:
         sync: false
       - key: METRICS_TOKEN
         generateValue: true
+      # Unused under AUTH_MODE=supabase — Supabase issues the tokens and they
+      # are verified against its JWKS. Generated anyway so switching to `dual`
+      # during an auth cutover does not require remembering this.
+      - key: JWT_SECRET
+        generateValue: true
 
   # --- compute ------------------------------------------------------------
   # The worker is commented out DELIBERATELY. It decodes video and runs pose

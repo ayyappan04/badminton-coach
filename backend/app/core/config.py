@@ -39,13 +39,34 @@ DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'app.db'}"
 _INSECURE_DEFAULT = "dev-secret-change-in-production"
 _env_secret = os.environ.get("JWT_SECRET")
 
+# JWT_SECRET signs and verifies THIS application's own tokens. Under
+# AUTH_MODE=supabase there are none: Supabase issues the tokens and they are
+# verified against its published JWKS, so the secret is never used. Demanding
+# it there would fail a deployment over a value that has no effect -- which is
+# a guard protecting nothing, and it stopped the first production deploy dead.
+#
+# It genuinely IS required for `legacy` and for `dual`, because both accept
+# tokens this application signed.
+_LEGACY_TOKENS_IN_USE = os.environ.get("AUTH_MODE", "legacy").lower() in ("legacy", "dual")
+
 if _env_secret and _env_secret != _INSECURE_DEFAULT:
     JWT_SECRET = _env_secret
-elif IS_PRODUCTION:
+elif IS_PRODUCTION and _LEGACY_TOKENS_IN_USE:
     sys.exit(
         "FATAL: JWT_SECRET is unset or still the development default. "
         "Set a strong random JWT_SECRET (e.g. `openssl rand -hex 32`) before "
-        "starting with APP_ENV=production."
+        "starting with APP_ENV=production and AUTH_MODE="
+        f"{os.environ.get('AUTH_MODE', 'legacy')}."
+    )
+elif IS_PRODUCTION:
+    # Supabase-only production. Generate an unusable-by-anyone value so the
+    # module still has the attribute, and say plainly that it is inert.
+    JWT_SECRET = secrets.token_hex(32)
+    print(
+        "[config] AUTH_MODE=supabase: no JWT_SECRET was supplied and none is "
+        "needed. Supabase issues tokens and they are verified against its "
+        "JWKS; this process signs nothing.",
+        file=sys.stderr,
     )
 else:
     JWT_SECRET = secrets.token_hex(32)
