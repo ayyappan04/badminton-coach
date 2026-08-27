@@ -113,7 +113,20 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new ApiError(typeof detail === "string" ? detail : JSON.stringify(detail), res.status, code);
   }
   if (res.status === 204) return undefined as T;
-  return res.json();
+
+  // A 200 that is not JSON means something answered that is not our API --
+  // a proxy, a captive portal, or an SPA catch-all rewrite serving index.html.
+  // Surfacing it as an ApiError beats letting a raw SyntaxError escape from
+  // somewhere that looks like a successful request.
+  try {
+    return await res.json();
+  } catch {
+    throw new ApiError(
+      "The server returned an unexpected response. The API may be misconfigured.",
+      res.status,
+      "non_json_response",
+    );
+  }
 }
 
 export const api = {

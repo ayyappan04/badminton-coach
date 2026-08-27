@@ -67,7 +67,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     api.get("/health")
       .then(() => { if (!cancelled) setApiReachable(true); })
-      .catch((err) => { if (!cancelled && isNetworkError(err)) setApiReachable(false); });
+      // /health is unauthenticated and returns 200 whenever the API exists at
+      // all, so ANY failure here means it does not -- wrong base URL, no
+      // backend deployed, CORS refusal, or something else answering the path.
+      .catch(() => { if (!cancelled) setApiReachable(false); });
     return () => { cancelled = true; };
   }, []);
 
